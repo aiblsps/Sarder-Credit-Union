@@ -1,6 +1,7 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
+import fs from "fs";
 import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -23,22 +24,12 @@ async function startServer() {
     });
     app.use(vite.middlewares);
 
-    // Explicit fallback for dev mode if vite.middlewares doesn't handle it
     app.use('*', async (req, res, next) => {
       const url = req.originalUrl;
       try {
-        let template = await vite.transformIndexHtml(url, `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Sarder Credit Union</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
-</html>`);
+        const templatePath = path.resolve(__dirname, "index.html");
+        let template = await fs.promises.readFile(templatePath, "utf-8");
+        template = await vite.transformIndexHtml(url, template);
         res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
       } catch (e) {
         vite.ssrFixStacktrace(e as Error);
