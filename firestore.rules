@@ -1,0 +1,128 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Fields:
+    //   - uid: string (required)
+    //   - email: string (required)
+    //   - role: string (required, enum: ['super_admin', 'admin', 'director'])
+    //   - userId: string (required)
+    //   - password: string (legacy, for migration)
+    //
+    // Collection: customers
+    // Fields:
+    //   - accountNumber: string (required)
+    //   - name: string (required)
+    //   - mobile: string (required)
+    //   ...
+    //
+    // Collection: investments
+    // Fields:
+    //   - customerAccountNumber: string (required)
+    //   - productName: string (required)
+    //   - salePrice: number (required)
+    //   ...
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.email == "aspsbazar@gmail.com" ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'super_admin'])
+      );
+    }
+
+    function isSuperAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.email == "aspsbazar@gmail.com" ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'super_admin')
+      );
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // ===============================================================
+    // Collection Rules
+    // ===============================================================
+
+    // Users collection
+    match /users/{userId} {
+      allow read: if isAuthenticated(); 
+      allow create: if isAuthenticated() && (isSuperAdmin() || request.auth.uid == userId);
+      allow update: if isAuthenticated() && (isSuperAdmin() || request.auth.uid == userId);
+      allow delete: if isSuperAdmin();
+    }
+
+    // Pending Users
+    match /pending_users/{docId} {
+      allow read: if isAdmin(); 
+      allow create: if true; 
+      allow delete: if isSuperAdmin();
+    }
+
+    // All other collections
+    match /customers/{id} { 
+      allow read: if isAuthenticated(); 
+      allow write: if isSuperAdmin(); 
+    }
+    match /investments/{id} { 
+      allow read: if isAuthenticated(); 
+      allow write: if isSuperAdmin(); 
+    }
+    match /transactions/{id} { 
+      allow read: if isAuthenticated(); 
+      allow create: if isAdmin();
+      allow update, delete: if isSuperAdmin();
+    }
+    match /directors/{id} { 
+      allow read: if isAuthenticated(); 
+      allow write: if isSuperAdmin(); 
+    }
+    match /director_transactions/{id} { 
+      allow read: if isAuthenticated(); 
+      allow write: if isSuperAdmin(); 
+    }
+    match /banks/{id} { 
+      allow read: if isAuthenticated(); 
+      allow write: if isSuperAdmin(); 
+    }
+    match /bank_transactions/{id} { 
+      allow read: if isAuthenticated(); 
+      allow create: if isAdmin();
+      allow update, delete: if isSuperAdmin();
+    }
+    match /expenses/{id} {
+      allow read: if isAuthenticated();
+      allow create: if isAdmin();
+      allow update, delete: if isSuperAdmin();
+    }
+
+    // App Settings
+    match /app_settings/{docId} {
+      allow read: if true; // Publicly readable for loading screen
+      allow write: if isSuperAdmin();
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,194 @@
+{
+  "entities": {
+    "Director": {
+      "title": "Director",
+      "description": "A business director who contributes capital.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "mobile": { "type": "string" },
+        "profession": { "type": "string" },
+        "address": { "type": "string" },
+        "email": { "type": "string" },
+        "photoUrl": { "type": "string" },
+        "totalDeposit": { "type": "number" },
+        "totalWithdrawal": { "type": "number" },
+        "balance": { "type": "number" },
+        "totalProfitReceived": { "type": "number" },
+        "totalProfitWithdrawn": { "type": "number" },
+        "profitBalance": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "mobile"]
+    },
+    "DirectorTransaction": {
+      "title": "Director Transaction",
+      "description": "A transaction related to a director (deposit, withdrawal, profit distribution, or profit withdrawal).",
+      "type": "object",
+      "properties": {
+        "directorId": { "type": "string" },
+        "date": { "type": "string" },
+        "type": { "type": "string", "enum": ["deposit", "withdrawal", "profit_distribution", "profit_withdraw"] },
+        "amount": { "type": "number" },
+        "note": { "type": "string" },
+        "processedBy": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["directorId", "date", "type", "amount"]
+    },
+    "Customer": {
+      "title": "Customer",
+      "description": "A customer who buys products on installments.",
+      "type": "object",
+      "properties": {
+        "accountNumber": { "type": "string" },
+        "accountNumberInt": { "type": "number" },
+        "name": { "type": "string" },
+        "nameEnglish": { "type": "string" },
+        "mobile": { "type": "string" },
+        "altMobile": { "type": "string" },
+        "fatherName": { "type": "string" },
+        "motherName": { "type": "string" },
+        "nid": { "type": "string" },
+        "gender": { "type": "string" },
+        "email": { "type": "string" },
+        "profession": { "type": "string" },
+        "religion": { "type": "string" },
+        "businessName": { "type": "string" },
+        "dob": { "type": "string" },
+        "education": { "type": "string" },
+        "maritalStatus": { "type": "string" },
+        "spouseName": { "type": "string" },
+        "spouseFatherName": { "type": "string" },
+        "spouseMotherName": { "type": "string" },
+        "spouseNid": { "type": "string" },
+        "spouseDob": { "type": "string" },
+        "spouseAddress": { "type": "string" },
+        "photoUrl": { "type": "string" },
+        "presentAddress": {
+          "type": "object",
+          "properties": {
+            "village": { "type": "string" },
+            "postOffice": { "type": "string" },
+            "thana": { "type": "string" },
+            "district": { "type": "string" }
+          }
+        },
+        "permanentAddress": {
+          "type": "object",
+          "properties": {
+            "village": { "type": "string" },
+            "postOffice": { "type": "string" },
+            "thana": { "type": "string" },
+            "district": { "type": "string" }
+          }
+        },
+        "bloodGroup": { "type": "string" },
+        "joiningDate": { "type": "string" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["accountNumber", "name", "mobile"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "A financial transaction (deposit, withdrawal, expense, purchase, installment, profit distribution, or profit withdrawal).",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["deposit", "withdrawal", "expense", "purchase", "installment", "profit_distribution", "profit_withdraw"] },
+        "amount": { "type": "number" },
+        "date": { "type": "string" },
+        "note": { "type": "string" },
+        "relatedId": { "type": "string" },
+        "relatedName": { "type": "string" }
+      },
+      "required": ["type", "amount", "date"]
+    },
+    "Investment": {
+      "title": "Investment",
+      "description": "A product sold to a customer on installments.",
+      "type": "object",
+      "properties": {
+        "customerAccountNumber": { "type": "string" },
+        "productName": { "type": "string" },
+        "purchasePrice": { "type": "number" },
+        "salePrice": { "type": "number" },
+        "profit": { "type": "number" },
+        "downPayment": { "type": "number" },
+        "totalInstallments": { "type": "number" },
+        "installmentAmount": { "type": "number" },
+        "paidInstallments": { "type": "number" },
+        "remainingAmount": { "type": "number" },
+        "date": { "type": "string" }
+      },
+      "required": ["customerAccountNumber", "productName", "salePrice"]
+    },
+    "User": {
+      "title": "User",
+      "description": "App user with roles.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["super_admin", "admin", "director"] },
+        "directorId": { "type": "string" },
+        "userId": { "type": "string" },
+        "signatureUrl": { "type": "string" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "PendingUser": {
+      "title": "Pending User",
+      "description": "A user waiting for approval.",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "password": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "password", "name"]
+    },
+    "Bank": {
+      "title": "Bank",
+      "description": "A bank account.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "accountNumber": { "type": "string" },
+        "branch": { "type": "string" },
+        "balance": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "accountNumber"]
+    },
+    "BankTransaction": {
+      "title": "Bank Transaction",
+      "description": "A transaction related to a bank account.",
+      "type": "object",
+      "properties": {
+        "bankId": { "type": "string" },
+        "date": { "type": "string" },
+        "type": { "type": "string", "enum": ["deposit", "withdrawal"] },
+        "amount": { "type": "number" },
+        "note": { "type": "string" },
+        "processedBy": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["bankId", "date", "type", "amount"]
+    }
+  },
+  "firestore": {
+    "/directors/{directorId}": { "schema": "Director", "description": "Business directors" },
+    "/director_transactions/{transactionId}": { "schema": "DirectorTransaction", "description": "Director transactions" },
+    "/customers/{customerId}": { "schema": "Customer", "description": "Customers" },
+    "/transactions/{transactionId}": { "schema": "Transaction", "description": "All financial transactions" },
+    "/investments/{investmentId}": { "schema": "Investment", "description": "Installment investments" },
+    "/users/{userId}": { "schema": "User", "description": "App users and roles" },
+    "/pending_users/{docId}": { "schema": "PendingUser", "description": "Users waiting for approval" },
+    "/banks/{bankId}": { "schema": "Bank", "description": "Bank accounts" },
+    "/bank_transactions/{transactionId}": { "schema": "BankTransaction", "description": "Bank transactions" }
+  }
+}

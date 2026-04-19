@@ -1,0 +1,22 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=Hind+Siliguri:wght@400;500;600;700&display=swap');
+@import url('https://fonts.maateen.me/solaiman-lipi/font.css');
+
+@font-face {
+  font-family: 'SolaimanLipiFallback';
+  src: url('https://cdn.jsdelivr.net/gh/atlo611/SolaimanLipi/SolaimanLipi.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "SolaimanLipi", "Hind Siliguri", "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+
+@layer base {
+  html, body {
+    font-family: "SolaimanLipi", "Hind Siliguri", "Inter", sans-serif !important;
+  }
+}
