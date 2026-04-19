@@ -169,11 +169,11 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
               className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-40"
             />
             <motion.div
-              initial={{ x: '-100%' }}
+              initial={{ x: '100%' }}
               animate={{ x: 0 }}
-              exit={{ x: '-100%' }}
+              exit={{ x: '100%' }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="fixed inset-y-0 left-0 w-72 bg-white shadow-2xl z-50 flex flex-col"
+              className="fixed inset-y-0 right-0 w-72 bg-white shadow-2xl z-50 flex flex-col"
             >
               <div className="p-6 border-b border-slate-100 bg-emerald-600 text-white">
                 <div className="flex items-center justify-between">

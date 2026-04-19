@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, addDoc, deleteDoc, doc, updateDoc, query, where, orderBy, serverTimestamp, increment, writeBatch } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from './firebase';
 import { useAuth } from './AuthContext';
-import { Plus, Search, Landmark, MoreVertical, Edit, Trash2, History, X, ChevronRight, ArrowLeft, Wallet, Calendar, User, Eye, List, ChevronDown } from 'lucide-react';
+import { Plus, Search, Landmark, MoreVertical, Edit, Trash2, History, X, ChevronRight, ArrowLeft, Wallet, Calendar, User, Eye, List, ChevronDown, AlertCircle } from 'lucide-react';
 import { formatCurrency, toBengaliNumber, cn } from './lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { DataTable } from './components/DataTable';
@@ -28,6 +28,7 @@ export const Banks = () => {
   const [menuPosition, setMenuPosition] = useState<{ top: number, left: number } | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<{ id: string, type: 'bank' | 'transaction', data?: any } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [formData, setFormData] = useState({
     accountNumber: '',
@@ -100,8 +101,36 @@ export const Banks = () => {
     setOpenMenuId(openMenuId === bank.id ? null : bank.id);
   };
 
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+
+  useEffect(() => {
+    const handleEnter = (e: KeyboardEvent) => {
+      if (e.key === 'Enter') {
+        if (showConfirmModal) {
+          e.preventDefault();
+          const confirmBtn = document.getElementById('bank-confirm-btn');
+          if (confirmBtn) confirmBtn.click();
+        } else if (showAddModal) {
+          e.preventDefault();
+          const submitBtn = document.getElementById('bank-submit-btn');
+          if (submitBtn) submitBtn.click();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleEnter);
+    return () => window.removeEventListener('keydown', handleEnter);
+  }, [showConfirmModal, showAddModal]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!showConfirmModal) {
+      setShowConfirmModal(true);
+      return;
+    }
+
+    setShowConfirmModal(false);
+    setIsSubmitting(true);
     try {
       if (editingBank) {
         await updateDoc(doc(db, 'banks', editingBank.id), formData);
@@ -120,6 +149,8 @@ export const Banks = () => {
     } catch (err) {
       console.error(err);
       setErrorModal("ব্যাংক তথ্য সংরক্ষণ করতে সমস্যা হয়েছে");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -357,6 +388,42 @@ export const Banks = () => {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
+      {/* Confirmation Modal */}
+      <AnimatePresence>
+        {showConfirmModal && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 text-center space-y-6 shadow-2xl"
+            >
+              <div className="w-20 h-20 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto">
+                <AlertCircle size={40} />
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-xl font-bold text-slate-800 tracking-tight">ব্যাংক তথ্য নিশ্চিত করুন</h3>
+                <p className="text-slate-500">আপনি কি নিশ্চিত যে এই ব্যাংক তথ্যটি সংরক্ষণ করতে চান?</p>
+              </div>
+              <div className="flex gap-3">
+                <button 
+                  onClick={() => setShowConfirmModal(false)}
+                  className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-xl transition-colors"
+                >
+                  বাতিল
+                </button>
+                <button 
+                  id="bank-confirm-btn"
+                  onClick={(e) => handleSubmit(e as any)}
+                  className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all active:scale-95"
+                >
+                  হ্যাঁ, সংরক্ষণ করুন
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-xl font-black text-slate-800">সকল ব্যাংক</h2>
@@ -576,6 +643,7 @@ export const Banks = () => {
                 <div className="pt-8 space-y-4">
                   <button 
                     type="submit"
+                    id="bank-submit-btn"
                     className="w-full py-4 bg-slate-900 text-white font-bold rounded-xl hover:bg-slate-800 transition-colors shadow-lg active:scale-[0.98]"
                   >
                     {editingBank ? 'তথ্য আপডেট করুন' : 'ব্যাংক একাউন্ট যোগ করুন'}

@@ -3,7 +3,7 @@ import { collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc, query, where
 import { db, handleFirestoreError, OperationType } from './firebase';
 import { useAuth } from './AuthContext';
 import { formatCurrency, toBengaliNumber, getDirectDriveUrl } from './lib/utils';
-import { Plus, Search, UserPlus, Phone, Mail, MapPin, Briefcase, Trash2, Edit, ChevronRight, X, ArrowLeft, Wallet, History, User, Camera, MoreVertical, List, ChevronDown, Info, FileText, Award, Eye } from 'lucide-react';
+import { Plus, Search, UserPlus, Phone, Mail, MapPin, Briefcase, Trash2, Edit, ChevronRight, X, ArrowLeft, Wallet, History, User, Camera, MoreVertical, List, ChevronDown, Info, FileText, Award, Eye, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
 import { DataTable } from './components/DataTable';
@@ -43,6 +43,26 @@ export const Directors = () => {
   });
 
   const [showTransactionModal, setShowTransactionModal] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+
+  useEffect(() => {
+    const handleEnter = (e: KeyboardEvent) => {
+      if (e.key === 'Enter') {
+        if (showConfirmModal) {
+          e.preventDefault();
+          const confirmBtn = document.getElementById('director-confirm-btn');
+          if (confirmBtn) confirmBtn.click();
+        } else if (showAddModal) {
+          e.preventDefault();
+          const submitBtn = document.getElementById('director-submit-btn');
+          if (submitBtn) submitBtn.click();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleEnter);
+    return () => window.removeEventListener('keydown', handleEnter);
+  }, [showConfirmModal, showAddModal]);
+
   const [transactionType, setTransactionType] = useState<'deposit' | 'withdrawal' | 'profit_distribution' | 'profit_withdraw'>('deposit');
   const [transactionData, setTransactionData] = useState({
     amount: '',
@@ -315,6 +335,13 @@ export const Directors = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (role !== 'super_admin' && editingDirector) return;
+
+    if (!showConfirmModal) {
+      setShowConfirmModal(true);
+      return;
+    }
+
+    setShowConfirmModal(false);
     setIsSubmitting(true);
 
     try {
@@ -907,6 +934,7 @@ export const Directors = () => {
               <div className="bg-white p-6 pb-24 border-t border-slate-100 mt-auto">
                 <button 
                   type="submit"
+                  id="director-submit-btn"
                   onClick={(e) => {
                     e.preventDefault();
                     handleSubmit(e as any);
@@ -1023,6 +1051,43 @@ export const Directors = () => {
                   </button>
                 </div>
               </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Confirmation Modal */}
+      <AnimatePresence>
+        {showConfirmModal && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 text-center space-y-6 shadow-2xl"
+            >
+              <div className="w-20 h-20 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto">
+                <AlertCircle size={40} />
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-xl font-bold text-slate-800 tracking-tight">পরিচালক তথ্য নিশ্চিত করুন</h3>
+                <p className="text-slate-500">আপনি কি নিশ্চিত যে এই পরিচালক তথ্যটি সংরক্ষণ করতে চান?</p>
+              </div>
+              <div className="flex gap-3">
+                <button 
+                  onClick={() => setShowConfirmModal(false)}
+                  className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-xl transition-colors"
+                >
+                  বাতিল
+                </button>
+                <button 
+                  id="director-confirm-btn"
+                  onClick={(e) => handleSubmit(e as any)}
+                  className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all active:scale-95"
+                >
+                  হ্যাঁ, সংরক্ষণ করুন
+                </button>
+              </div>
             </motion.div>
           </div>
         )}

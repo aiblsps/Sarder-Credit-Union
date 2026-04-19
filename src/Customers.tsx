@@ -3,7 +3,7 @@ import { collection, onSnapshot, addDoc, deleteDoc, doc, updateDoc, serverTimest
 import { db, handleFirestoreError, OperationType } from './firebase';
 import { useAuth } from './AuthContext';
 import { generateId, getDirectDriveUrl, toBengaliNumber, cn } from './lib/utils';
-import { Plus, Search, MoreVertical, Edit2, Trash2, X, Eye, CheckCircle2, List, ChevronDown, Info } from 'lucide-react';
+import { Plus, Search, MoreVertical, Edit2, Trash2, X, Eye, CheckCircle2, List, ChevronDown, Info, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { DataTable } from './components/DataTable';
 
@@ -37,7 +37,7 @@ export const Customers = () => {
   const [sameAsPresent, setSameAsPresent] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [errorModal, setErrorModal] = useState<string | null>(null);
-  const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
+  const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0, isUpward: false });
   
   const initialFormData = {
     name: '',
@@ -119,9 +119,36 @@ export const Customers = () => {
     setCurrentPage(1);
   }, [searchTerm]);
 
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+
+  useEffect(() => {
+    const handleEnter = (e: KeyboardEvent) => {
+      if (e.key === 'Enter') {
+        if (showConfirmModal) {
+          e.preventDefault();
+          const confirmBtn = document.getElementById('customer-confirm-btn');
+          if (confirmBtn) confirmBtn.click();
+        } else if (showAddModal) {
+          e.preventDefault();
+          const submitBtn = document.getElementById('customer-submit-btn');
+          if (submitBtn) submitBtn.click();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleEnter);
+    return () => window.removeEventListener('keydown', handleEnter);
+  }, [showConfirmModal, showAddModal]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (role !== 'super_admin' && role !== 'admin') return;
+
+    if (!showConfirmModal) {
+      setShowConfirmModal(true);
+      return;
+    }
+
+    setShowConfirmModal(false);
     setIsSubmitting(true);
 
     try {
@@ -249,23 +276,25 @@ export const Customers = () => {
             <Eye size={18} />
           </button>
           {role === 'super_admin' && (
-            <div className="relative">
-              <button 
-                onClick={(e) => {
-                  e.stopPropagation();
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  setMenuPosition({
-                    top: rect.bottom + window.scrollY + 4,
-                    left: rect.right + window.scrollX - 128
-                  });
-                  setActiveActionMenu(activeActionMenu === customer.id ? null : customer.id);
-                }}
-                className="flex items-center gap-1 px-3 py-1.5 bg-slate-100 border border-slate-200 rounded-lg hover:bg-slate-200 transition-colors text-slate-700"
-              >
-                <List size={18} />
-                <ChevronDown size={14} className={cn("transition-transform", activeActionMenu === customer.id && "rotate-180")} />
-              </button>
-            </div>
+            <button 
+              onClick={(e) => {
+                e.stopPropagation();
+                const rect = e.currentTarget.getBoundingClientRect();
+                const windowHeight = window.innerHeight;
+                const isUpward = rect.bottom > windowHeight - 150;
+                
+                setMenuPosition({
+                  top: isUpward ? rect.top : rect.bottom,
+                  left: rect.left,
+                  isUpward
+                });
+                setActiveActionMenu(activeActionMenu === customer.id ? null : customer.id);
+              }}
+              className="flex items-center gap-1 px-3 py-1.5 bg-slate-100 border border-slate-200 rounded-lg hover:bg-slate-200 transition-colors text-slate-700"
+            >
+              <List size={18} />
+              <ChevronDown size={14} className={cn("transition-transform", activeActionMenu === customer.id && "rotate-180")} />
+            </button>
           )}
         </div>
       ),
@@ -312,6 +341,42 @@ export const Customers = () => {
 
   return (
     <div className="space-y-6">
+      {/* Confirmation Modal */}
+      <AnimatePresence>
+        {showConfirmModal && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 text-center space-y-6 shadow-2xl"
+            >
+              <div className="w-20 h-20 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto">
+                <AlertCircle size={40} />
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-xl font-bold text-slate-800 tracking-tight">গ্রাহক তথ্য নিশ্চিত করুন</h3>
+                <p className="text-slate-500">আপনি কি নিশ্চিত যে এই গ্রাহক তথ্যটি সংরক্ষণ করতে চান?</p>
+              </div>
+              <div className="flex gap-3">
+                <button 
+                  onClick={() => setShowConfirmModal(false)}
+                  className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-xl transition-colors"
+                >
+                  বাতিল
+                </button>
+                <button 
+                  id="customer-confirm-btn"
+                  onClick={(e) => handleSubmit(e as any)}
+                  className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all active:scale-95"
+                >
+                  হ্যাঁ, সংরক্ষণ করুন
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
       {/* Success Message */}
       <AnimatePresence>
         {successMessage && (
@@ -385,48 +450,6 @@ export const Customers = () => {
           </div>
         )}
       </div>
-
-      {/* Action Menu Portal */}
-      <AnimatePresence>
-        {activeActionMenu && (
-          <>
-            <div className="fixed inset-0 z-[1000]" onClick={() => setActiveActionMenu(null)}></div>
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: -10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: -10 }}
-              style={{ 
-                position: 'absolute',
-                top: menuPosition.top,
-                left: menuPosition.left,
-              }}
-              className="w-32 bg-white rounded-xl shadow-2xl border border-slate-100 z-[1001] py-2 overflow-hidden"
-            >
-              <button 
-                onClick={() => {
-                  const customer = customers.find(c => c.id === activeActionMenu);
-                  handleEdit(customer);
-                  setActiveActionMenu(null);
-                }}
-                className="w-full flex items-center gap-2 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 transition-colors"
-              >
-                <Edit2 size={14} />
-                <span>এডিট</span>
-              </button>
-              <button 
-                onClick={() => {
-                  setShowDeleteConfirm(activeActionMenu);
-                  setActiveActionMenu(null);
-                }}
-                className="w-full flex items-center gap-2 px-4 py-2 text-sm text-rose-600 hover:bg-rose-50 transition-colors"
-              >
-                <Trash2 size={14} />
-                <span>ডিলিট</span>
-              </button>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
 
       {/* Error Modal */}
       <AnimatePresence>
@@ -626,6 +649,7 @@ export const Customers = () => {
               <div className="bg-white p-6 pb-24 border-t border-slate-100 mt-auto">
                 <button 
                   type="submit"
+                  id="customer-submit-btn"
                   onClick={(e) => {
                     e.preventDefault();
                     handleSubmit(e as any);
@@ -877,6 +901,49 @@ export const Customers = () => {
               </div>
             </motion.div>
           </div>
+        )}
+      </AnimatePresence>
+      {/* Action Menu Portal */}
+      <AnimatePresence>
+        {activeActionMenu && (
+          <>
+            <div className="fixed inset-0 z-[999]" onClick={() => setActiveActionMenu(null)}></div>
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: menuPosition.isUpward ? 10 : -10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: menuPosition.isUpward ? 10 : -10 }}
+              style={{ 
+                position: 'fixed',
+                top: menuPosition.isUpward ? 'auto' : menuPosition.top + 8,
+                bottom: menuPosition.isUpward ? (window.innerHeight - menuPosition.top) + 8 : 'auto',
+                left: Math.max(16, Math.min(window.innerWidth - 144, menuPosition.left - 80)),
+                width: '128px'
+              }}
+              className="bg-white rounded-xl shadow-2xl border border-slate-100 z-[1000] py-2 overflow-hidden"
+            >
+              <button 
+                onClick={() => {
+                  const customer = paginatedData.find(c => c.id === activeActionMenu);
+                  if (customer) handleEdit(customer);
+                  setActiveActionMenu(null);
+                }}
+                className="w-full flex items-center gap-2 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 transition-colors text-left"
+              >
+                <Edit2 size={14} />
+                <span>এডিট</span>
+              </button>
+              <button 
+                onClick={() => {
+                  setShowDeleteConfirm(activeActionMenu);
+                  setActiveActionMenu(null);
+                }}
+                className="w-full flex items-center gap-2 px-4 py-2 text-sm text-rose-600 hover:bg-rose-50 transition-colors text-left"
+              >
+                <Trash2 size={14} />
+                <span>ডিলিট</span>
+              </button>
+            </motion.div>
+          </>
         )}
       </AnimatePresence>
     </div>

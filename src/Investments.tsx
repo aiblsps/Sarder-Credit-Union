@@ -488,10 +488,40 @@ export const Investments = () => {
 
   const [formTab, setFormTab] = useState<'investment' | 'guarantors'>('investment');
 
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+
+  useEffect(() => {
+    const handleEnter = (e: KeyboardEvent) => {
+      if (e.key === 'Enter') {
+        if (showConfirmModal) {
+          e.preventDefault();
+          const confirmBtn = document.getElementById('investment-confirm-btn');
+          if (confirmBtn) confirmBtn.click();
+        } else if (showAddModal) {
+          e.preventDefault();
+          if (!foundCustomer) {
+            handleSearchCustomer();
+          } else {
+            const submitBtn = document.getElementById('investment-submit-btn');
+            if (submitBtn) submitBtn.click();
+          }
+        }
+      }
+    };
+    window.addEventListener('keydown', handleEnter);
+    return () => window.removeEventListener('keydown', handleEnter);
+  }, [showConfirmModal, showAddModal, foundCustomer, searchAccount, isSearching]);
+
   const handleSubmit = async () => {
     if (!foundCustomer) return;
     if (role !== 'super_admin') return;
 
+    if (!showConfirmModal) {
+      setShowConfirmModal(true);
+      return;
+    }
+
+    setShowConfirmModal(false);
     // Basic validation
     if (!investmentData.amount || !investmentData.installmentCount) {
       setErrorModal('দয়া করে বিনিয়োগের পরিমাণ এবং কিস্তির সংখ্যা প্রদান করুন');
@@ -2055,6 +2085,42 @@ export const Investments = () => {
 
   return (
     <div className="space-y-3 pb-96 animate-in fade-in duration-500">
+      {/* Confirmation Modal */}
+      <AnimatePresence>
+        {showConfirmModal && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 text-center space-y-6 shadow-2xl"
+            >
+              <div className="w-20 h-20 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto">
+                <AlertCircle size={40} />
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-xl font-bold text-slate-800 tracking-tight">বিনিয়োগ তথ্য নিশ্চিত করুন</h3>
+                <p className="text-slate-500">আপনি কি নিশ্চিত যে এই বিনিয়োগ তথ্যটি সংরক্ষণ করতে চান?</p>
+              </div>
+              <div className="flex gap-3">
+                <button 
+                  onClick={() => setShowConfirmModal(false)}
+                  className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-xl transition-colors"
+                >
+                  বাতিল
+                </button>
+                <button 
+                  id="investment-confirm-btn"
+                  onClick={() => handleSubmit()}
+                  className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all active:scale-95"
+                >
+                  হ্যাঁ, সংরক্ষণ করুন
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-black text-slate-800">সকল বিনিয়োগ</h2>
         {role === 'super_admin' && (
@@ -2877,7 +2943,7 @@ export const Investments = () => {
                             className="w-full p-5 bg-white border-2 border-blue-600 rounded-2xl text-center text-2xl font-black text-[#003366] focus:ring-4 focus:ring-blue-500/10 focus:outline-none transition-all placeholder:text-slate-400"
                             value={searchAccount}
                             onChange={e => setSearchAccount(e.target.value)}
-                            onKeyPress={e => e.key === 'Enter' && handleSearchCustomer()}
+                            onKeyDown={e => e.key === 'Enter' && handleSearchCustomer()}
                           />
                         </div>
                         
@@ -3273,6 +3339,7 @@ export const Investments = () => {
                   {/* Submit Button at the very bottom */}
                   <div className="p-6 pb-32 bg-slate-50 border-t border-slate-200 mt-auto">
                     <button 
+                      id="investment-submit-btn"
                       disabled={isSubmitting}
                       onClick={handleSubmit}
                       className="w-full py-5 bg-slate-900 text-white text-2xl font-black rounded-2xl shadow-2xl hover:bg-slate-800 transition-all flex items-center justify-center gap-3 disabled:opacity-50 active:scale-[0.98]"

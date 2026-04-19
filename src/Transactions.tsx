@@ -186,11 +186,44 @@ export const Transactions = () => {
     }
   };
 
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+
+  useEffect(() => {
+    const handleEnter = (e: KeyboardEvent) => {
+      if (e.key === 'Enter') {
+        // If confirm modal is open, trigger submit
+        if (showConfirmModal) {
+          e.preventDefault();
+          const confirmBtn = document.getElementById('transaction-confirm-btn');
+          if (confirmBtn) confirmBtn.click();
+        } else if (activeType) {
+          // If in a form but not confirming, handle search or form submit
+          if (!foundEntity && (activeType === 'installment' || activeType === 'settlement')) {
+            handleSearch();
+          } else {
+            e.preventDefault();
+            const submitBtn = document.getElementById('transaction-submit-btn');
+            if (submitBtn) submitBtn.click();
+          }
+        }
+      }
+    };
+    window.addEventListener('keydown', handleEnter);
+    return () => window.removeEventListener('keydown', handleEnter);
+  }, [showConfirmModal, activeType, foundEntity, searchId, loading]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || loading) return;
 
-    const amt = parseFloat(amount);
+    if (!showConfirmModal) {
+      setShowConfirmModal(true);
+      return;
+    }
+
+    setShowConfirmModal(false);
+    setLoading(true);
+    const amt = parseFloat(amount) || 0;
     const f = parseFloat(fine) || 0;
     const d = parseFloat(discount) || 0;
 
@@ -649,6 +682,43 @@ export const Transactions = () => {
 
   return (
     <div className="space-y-2 animate-in fade-in duration-500 pb-20 relative min-h-[60vh]">
+      {/* Confirmation Modal */}
+      <AnimatePresence>
+        {showConfirmModal && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 text-center space-y-6 shadow-2xl"
+            >
+              <div className="w-20 h-20 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto">
+                <AlertCircle size={40} />
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-xl font-bold text-slate-800 tracking-tight">লেনদেন নিশ্চিত করুন</h3>
+                <p className="text-slate-500">আপনি কি নিশ্চিত যে লেনদেনটি সম্পন্ন করতে চান?</p>
+              </div>
+              <div className="flex gap-3">
+                <button 
+                  onClick={() => setShowConfirmModal(false)}
+                  className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-xl transition-colors"
+                >
+                  বাতিল
+                </button>
+                <button 
+                  id="transaction-confirm-btn"
+                  onClick={(e) => handleSubmit(e as any)}
+                  className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all active:scale-95"
+                >
+                  হ্যাঁ, সম্পন্ন করুন
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {activeType ? (
         <div className={cn(
           "mx-auto space-y-4 animate-in slide-in-from-bottom-4 duration-500 relative max-w-7xl"
@@ -900,6 +970,7 @@ export const Transactions = () => {
 
                         <button
                           type="submit"
+                          id="transaction-submit-btn"
                           disabled={loading}
                           className="w-full py-3 bg-[#00a651] hover:bg-[#008f45] text-white rounded-lg font-black text-xl active:scale-[0.98] transition-all disabled:opacity-50 shadow-md flex items-center justify-center mt-2 border-b-4 border-emerald-800"
                         >
@@ -1129,6 +1200,7 @@ export const Transactions = () => {
 
                           <button
                             type="submit"
+                            id="transaction-submit-btn"
                             disabled={loading}
                             className="w-full py-4 bg-[#00a651] hover:bg-[#008f45] text-white rounded-xl font-black text-2xl active:scale-[0.98] transition-all disabled:opacity-50 shadow-md flex items-center justify-center mt-4"
                           >
@@ -1322,6 +1394,7 @@ export const Transactions = () => {
                       
                       <button 
                         type="submit" 
+                        id="transaction-submit-btn"
                         disabled={loading} 
                         className="w-full py-5 bg-[#5b96e9] hover:bg-[#4a85d8] text-white rounded-2xl font-black text-xl active:scale-[0.98] transition-all disabled:opacity-50 shadow-lg"
                       >
