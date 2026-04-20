@@ -709,7 +709,12 @@ export const Investments = () => {
               e.stopPropagation();
               const rect = e.currentTarget.getBoundingClientRect();
               const windowHeight = window.innerHeight;
-              const isUpward = rect.bottom > windowHeight - 300;
+              const menuHeight = 260; // Estimated height for 5 items
+              const spaceBelow = windowHeight - rect.bottom;
+              const spaceAbove = rect.top;
+              
+              // Open upward only if there's more space above than below AND not enough space below
+              const isUpward = spaceBelow < menuHeight && spaceAbove > spaceBelow;
               
               setMenuPosition({
                 top: isUpward ? rect.top : rect.bottom,
@@ -734,8 +739,8 @@ export const Investments = () => {
                   exit={{ opacity: 0, scale: 0.95, y: menuPosition.isUpward ? 10 : -10 }}
                   style={{ 
                     position: 'fixed',
-                    top: menuPosition.isUpward ? 'auto' : menuPosition.top + 8,
-                    bottom: menuPosition.isUpward ? (window.innerHeight - menuPosition.top) + 8 : 'auto',
+                    top: menuPosition.isUpward ? 'auto' : menuPosition.top + 4,
+                    bottom: menuPosition.isUpward ? (window.innerHeight - menuPosition.top) + 4 : 'auto',
                     left: Math.max(16, Math.min(window.innerWidth - 256, menuPosition.left - 180)),
                     width: '240px'
                   }}
@@ -1544,19 +1549,29 @@ export const Investments = () => {
         <head>
           <title>Investment - ${inv.customerAccountNumber}</title>
           <style>
-            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+            @import url('https://fonts.maateen.me/solaiman-lipi/font.css');
             @page { size: A4; margin: 0; }
-            body { font-family: 'Inter', sans-serif; margin: 0; padding: 20mm; background: #f0f0f0; display: flex; justify-content: center; }
-            .a4-page { background: white; width: 210mm; height: 297mm; padding: 20mm; box-shadow: 0 0 10px rgba(0,0,0,0.1); box-sizing: border-box; position: relative; }
+            body { font-family: 'SolaimanLipi', sans-serif; margin: 0; padding: 20mm; background: #fff; display: flex; justify-content: center; }
+            .a4-page { background: white; width: 210mm; height: 297mm; padding: 20mm; box-sizing: border-box; position: relative; }
             .header { text-align: center; margin-bottom: 40px; border-bottom: 3px solid #003366; padding-bottom: 20px; }
-            .header h1 { margin: 0; color: #003366; font-size: 32px; font-weight: 900; text-transform: uppercase; letter-spacing: 2px; }
-            .header p { margin: 5px 0 0; color: #666; font-weight: 700; font-size: 14px; }
+            .header h1 { margin: 0; color: #003366; font-size: 38px; font-weight: 900; letter-spacing: 1px; }
+            .header p { margin: 5px 0 0; color: #444; font-weight: 700; font-size: 18px; }
             .title { text-align: center; margin: 30px 0; }
-            .title h2 { display: inline-block; background: #003366; color: white; padding: 10px 40px; border-radius: 50px; font-size: 20px; font-weight: 900; margin: 0; }
-            .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 40px; }
-            .info-item { border-bottom: 1px solid #eee; padding-bottom: 8px; }
-            .label { color: #555; font-weight: 700; font-size: 14px; display: block; margin-bottom: 4px; }
-            .value { color: #000; font-weight: 900; font-size: 16px; }
+            .title h2 { display: inline-block; color: #999; font-size: 24px; font-weight: 900; margin: 0; }
+            .info-grid { 
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 15px 40px;
+              margin: 0 auto 40px auto; 
+              max-width: 800px;
+            }
+            .info-item { 
+              border-bottom: 1px solid #eee; 
+              padding-bottom: 8px; 
+              text-align: left; 
+            }
+            .label { color: #555; font-weight: 700; font-size: 14px; display: block; margin-bottom: 2px; }
+            .value { color: #000; font-weight: 900; font-size: 18px; display: block; }
             .footer { position: absolute; bottom: 20mm; left: 0; right: 0; text-align: center; color: #94a3b8; font-size: 12px; }
             @media print { body { background: white; padding: 0; } .a4-page { box-shadow: none; width: 100%; height: 100%; } }
           </style>
@@ -1564,25 +1579,25 @@ export const Investments = () => {
         <body>
           <div class="a4-page">
             <div class="header">
-              <h1>SPS Bazar</h1>
-              <p>Kalkini, Madaripur</p>
+              <h1>সরদার ক্রেডিট ইউনিয়ন</h1>
+              <p>কয়ারিয়া, কালকিনি মাদারীপুর</p>
             </div>
             <div class="title"><h2>বিনিয়োগের বিস্তারিত তথ্য</h2></div>
             <div class="info-grid">
               <div class="info-item"><span class="label">সদস্যের নামঃ</span><span class="value">${inv.customerName}</span></div>
               <div class="info-item"><span class="label">হিসাব নম্বরঃ</span><span class="value">${toBengaliNumber(inv.customerAccountNumber)}</span></div>
-              <div class="info-item"><span class="label">বিনিয়োগের পরিমাণঃ</span><span class="value">${formatCurrency(inv.amount)}</span></div>
-              <div class="info-item"><span class="label">মুনাফার পরিমাণঃ</span><span class="value">${formatCurrency(inv.profitAmount)} (${toBengaliNumber(inv.profitPercent)}%)</span></div>
-              <div class="info-item"><span class="label">মোট পরিমাণঃ</span><span class="value">${formatCurrency(inv.totalAmount)}</span></div>
+              <div class="info-item"><span class="label">বিনিয়োগের পরিমাণঃ</span><span class="value">${formatCurrency(inv.amount)} টাকা</span></div>
+              <div class="info-item"><span class="label">মুনাফার পরিমাণঃ</span><span class="value">${formatCurrency(inv.profitAmount)} টাকা (${toBengaliNumber(inv.profitPercent)}%)</span></div>
+              <div class="info-item"><span class="label">মোট পরিমাণঃ</span><span class="value">${formatCurrency(inv.totalAmount)} টাকা</span></div>
               <div class="info-item"><span class="label">কিস্তির সংখ্যাঃ</span><span class="value">${toBengaliNumber(inv.installmentCount)} টি</span></div>
-              <div class="info-item"><span class="label">প্রতি কিস্তিঃ</span><span class="value">${formatCurrency(inv.perInstallment)}</span></div>
-              <div class="info-item"><span class="label">শুরুর তারিখঃ</span><span class="value">${formatDate(inv.startDate)}</span></div>
-              <div class="info-item"><span class="label">শেষের তারিখঃ</span><span class="value">${formatDate(inv.endDate)}</span></div>
+              <div class="info-item"><span class="label">প্রতি কিস্তিঃ</span><span class="value">${formatCurrency(inv.perInstallment)} টাকা</span></div>
+              <div class="info-item"><span class="label">শুরুর তারিখঃ</span><span class="value">${toBengaliNumber(formatDate(inv.startDate))}</span></div>
+              <div class="info-item"><span class="label">শেষের তারিখঃ</span><span class="value">${toBengaliNumber(formatDate(inv.endDate))}</span></div>
               <div class="info-item"><span class="label">বিনিয়োগের ধরনঃ</span><span class="value">${inv.investmentType}</span></div>
               <div class="info-item"><span class="label">পণ্যঃ</span><span class="value">${inv.productInfo || '---'}</span></div>
               <div class="info-item"><span class="label">স্ট্যাটাসঃ</span><span class="value">${inv.status}</span></div>
             </div>
-            <div class="footer">Printed on: ${new Date().toLocaleString()} | Processed by: ${inv.createdBy}</div>
+            <div class="footer">Printed on: ${toBengaliNumber(new Date().toLocaleString())} | Processed by: ${inv.createdBy}</div>
           </div>
           <script>window.onload = () => setTimeout(() => window.print(), 500);</script>
         </body>
