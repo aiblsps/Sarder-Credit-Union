@@ -268,6 +268,13 @@ export const Banks = () => {
       render: (tr: any) => toBengaliNumber(tr.date.split('-').reverse().join('-'))
     },
     {
+      header: 'বিবরণ',
+      accessor: 'note',
+      className: 'text-xs font-black text-slate-600 text-center',
+      headerClassName: 'text-center',
+      render: (tr: any) => tr.note || '---'
+    },
+    {
       header: 'জমা',
       render: (tr: any) => (
         <span className="text-emerald-600">
@@ -320,74 +327,71 @@ export const Banks = () => {
     }
   ];
 
-  if (selectedBank) {
-    return (
-      <div className="fixed inset-0 top-[calc(env(safe-area-inset-top)+64px)] bottom-[calc(env(safe-area-inset-bottom)+64px)] z-20 bg-white flex flex-col animate-in slide-in-from-right duration-300">
-        <div className="flex-1 overflow-y-auto bg-slate-50/50 pb-8 px-4 md:px-8">
-          <div className="flex items-center justify-between bg-white px-4 py-2 border-b border-black mb-6 -mx-4 md:-mx-8">
-            <h3 className="text-lg font-black text-slate-800">লেনদেন বিবরণী</h3>
-            <button 
-              onClick={() => setSelectedBank(null)}
-              className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400"
-            >
-              <X size={24} />
-            </button>
-          </div>
-
-          <div className="max-w-7xl mx-auto space-y-8">
-            {/* Profile Table Style Header */}
-            <div className="overflow-x-auto border border-black shadow-sm bg-white">
-              <table className="w-full text-center border-collapse">
-                <thead>
-                  <tr className="bg-[#003366] text-white">
-                    <th className="py-3 px-4 border border-black text-xs font-bold uppercase tracking-wider whitespace-nowrap">একাউন্ট নাম</th>
-                    <th className="py-3 px-4 border border-black text-xs font-bold uppercase tracking-wider whitespace-nowrap">একাউন্ট নাম্বার</th>
-                    <th className="py-3 px-4 border border-black text-xs font-bold uppercase tracking-wider whitespace-nowrap">ব্যাংকের নাম</th>
-                    <th className="py-3 px-4 border border-black text-xs font-bold uppercase tracking-wider whitespace-nowrap">শাখা</th>
-                    <th className="py-3 px-4 border border-black text-xs font-bold uppercase tracking-wider whitespace-nowrap">রাউটিং নাম্বার</th>
-                    <th className="py-3 px-4 border border-black text-xs font-bold uppercase tracking-wider whitespace-nowrap">ব্যালেন্স</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr className="font-bold text-slate-800">
-                    <td className="py-3 px-4 border border-black text-sm whitespace-nowrap">{selectedBank.accountName}</td>
-                    <td className="py-3 px-4 border border-black text-sm whitespace-nowrap">{selectedBank.accountNumber}</td>
-                    <td className="py-3 px-4 border border-black text-sm whitespace-nowrap">{selectedBank.bankName}</td>
-                    <td className="py-3 px-4 border border-black text-sm whitespace-nowrap">{selectedBank.branch}</td>
-                    <td className="py-3 px-4 border border-black text-sm whitespace-nowrap">{selectedBank.routingNumber || '---'}</td>
-                    <td className="py-3 px-4 border border-black text-sm text-emerald-600 font-black whitespace-nowrap">{formatCurrency(selectedBank.balance)}</td>
-                  </tr>
-                </tbody>
-              </table>
+  return (
+    <div className="space-y-6 animate-in fade-in duration-500">
+      {selectedBank && (
+        <div className="fixed inset-0 top-[calc(env(safe-area-inset-top)+64px)] bottom-[calc(env(safe-area-inset-bottom)+64px)] z-20 bg-white flex flex-col animate-in slide-in-from-right duration-300">
+          <div className="flex-1 overflow-y-auto bg-slate-50/50 pb-8 px-4 md:px-8">
+            <div className="flex items-center justify-between bg-white px-4 py-2 border-b border-black mb-6 -mx-4 md:-mx-8">
+              <h3 className="text-lg font-black text-slate-800">লেনদেন বিবরণী</h3>
+              <button 
+                onClick={() => setSelectedBank(null)}
+                className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400"
+              >
+                <X size={24} />
+              </button>
             </div>
 
-            {/* Transactions DataTable */}
-            <div className="bg-white border border-black shadow-sm overflow-hidden">
-              <DataTable 
-                columns={transactionColumns}
-                data={(() => {
-                  let runningBalance = 0;
-                  const sorted = [...transactions].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-                  const withBalance = sorted.map(tr => {
-                    if (tr.type === 'deposit') runningBalance += tr.amount;
-                    else runningBalance -= tr.amount;
-                    return { ...tr, runningBalance };
-                  });
-                  return withBalance.reverse();
-                })()}
-                keyExtractor={(tr) => tr.id}
-                emptyMessage="কোনো লেনদেন পাওয়া যায়নি"
-                className="mb-0 border-none"
-              />
+            <div className="max-w-7xl mx-auto space-y-8">
+              {/* Profile Table Style Header */}
+              <div className="overflow-x-auto border border-black shadow-sm bg-white">
+                <table className="w-full text-center border-collapse">
+                  <thead>
+                    <tr className="bg-[#003366] text-white">
+                      <th className="py-3 px-4 border border-black text-xs font-bold uppercase tracking-wider whitespace-nowrap">একাউন্ট নাম</th>
+                      <th className="py-3 px-4 border border-black text-xs font-bold uppercase tracking-wider whitespace-nowrap">একাউন্ট নাম্বার</th>
+                      <th className="py-3 px-4 border border-black text-xs font-bold uppercase tracking-wider whitespace-nowrap">ব্যাংকের নাম</th>
+                      <th className="py-3 px-4 border border-black text-xs font-bold uppercase tracking-wider whitespace-nowrap">শাখা</th>
+                      <th className="py-3 px-4 border border-black text-xs font-bold uppercase tracking-wider whitespace-nowrap">রাউটিং নাম্বার</th>
+                      <th className="py-3 px-4 border border-black text-xs font-bold uppercase tracking-wider whitespace-nowrap">ব্যালেন্স</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="font-bold text-slate-800">
+                      <td className="py-3 px-4 border border-black text-sm whitespace-nowrap">{selectedBank.accountName}</td>
+                      <td className="py-3 px-4 border border-black text-sm whitespace-nowrap">{selectedBank.accountNumber}</td>
+                      <td className="py-3 px-4 border border-black text-sm whitespace-nowrap">{selectedBank.bankName}</td>
+                      <td className="py-3 px-4 border border-black text-sm whitespace-nowrap">{selectedBank.branch}</td>
+                      <td className="py-3 px-4 border border-black text-sm whitespace-nowrap">{selectedBank.routingNumber || '---'}</td>
+                      <td className="py-3 px-4 border border-black text-sm text-emerald-600 font-black whitespace-nowrap">{formatCurrency(selectedBank.balance)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Transactions DataTable */}
+              <div className="bg-white border border-black shadow-sm overflow-hidden">
+                <DataTable 
+                  columns={transactionColumns}
+                  data={(() => {
+                    let runningBalance = 0;
+                    const sorted = [...transactions].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+                    const withBalance = sorted.map(tr => {
+                      if (tr.type === 'deposit') runningBalance += tr.amount;
+                      else runningBalance -= tr.amount;
+                      return { ...tr, runningBalance };
+                    });
+                    return withBalance.reverse();
+                  })()}
+                  keyExtractor={(tr) => tr.id}
+                  emptyMessage="কোনো লেনদেন পাওয়া যায়নি"
+                  className="mb-0 border-none"
+                />
+              </div>
             </div>
           </div>
         </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-6 animate-in fade-in duration-500">
+      )}
       {/* Confirmation Modal */}
       <AnimatePresence>
         {showConfirmModal && (
