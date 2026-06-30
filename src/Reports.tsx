@@ -3,7 +3,7 @@ import { collection, onSnapshot, deleteDoc, doc, setDoc } from 'firebase/firesto
 import { useNavigate } from 'react-router-dom';
 import { db, handleFirestoreError, OperationType } from './firebase';
 import { formatCurrency, toBengaliNumber, cn } from './lib/utils';
-import { Calendar, ArrowLeft, Search, ChevronRight, TrendingUp, TrendingDown, Wallet, Trash2, Check, X, AlertCircle } from 'lucide-react';
+import { Calendar, ArrowLeft, Search, ChevronRight, TrendingUp, TrendingDown, Wallet, Trash2, Check, X, AlertCircle, Printer } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from './AuthContext';
 
@@ -1381,6 +1381,578 @@ export const Reports = () => {
     );
   };
 
+  const printMonthlyReport = () => {
+    const months = [
+      { id: '1', name: 'জানুয়ারি' }, { id: '2', name: 'ফেব্রুয়ারি' }, { id: '3', name: 'মার্চ' },
+      { id: '4', name: 'এপ্রিল' }, { id: '5', name: 'মে' }, { id: '6', name: 'জুন' },
+      { id: '7', name: 'জুলাই' }, { id: '8', name: 'আগস্ট' }, { id: '9', name: 'সেপ্টেম্বর' },
+      { id: '10', name: 'অক্টোবর' }, { id: '11', name: 'নভেম্বর' }, { id: '12', name: 'ডিসেম্বর' }
+    ];
+    const monthName = months.find(m => m.id === monMonth)?.name || '';
+
+    const y = parseInt(monYear);
+    const m = parseInt(monMonth);
+
+    const today = new Date();
+    const currentYear = today.getFullYear();
+    const currentMonth = today.getMonth() + 1;
+
+    const isCurrentMonth = (y === currentYear && m === currentMonth);
+    const isFutureMonth = (y > currentYear || (y === currentYear && m > currentMonth));
+
+    let reportData: any = null;
+    let isRunning = false;
+    let savedReport: any = null;
+
+    if (isCurrentMonth) {
+      const lastDayStr = getLastDayOfMonth(y, m);
+      reportData = calculateOverallReportForDate(lastDayStr);
+      isRunning = true;
+    } else if (!isFutureMonth) {
+      const reportId = `${y}-${m}`;
+      savedReport = data.monthlyReports.find(r => r.id === reportId);
+      if (savedReport) {
+        reportData = savedReport;
+      }
+    }
+
+    if (!reportData) {
+      alert('রিপোর্ট ডাটা পাওয়া যায়নি।');
+      return;
+    }
+
+    const {
+      totalDirectorDeposit,
+      totalDirectorWithdrawal,
+      totalProfitDistribution,
+      totalProfitWithdrawal,
+      currentBankBalance,
+      totalInvestmentGiven,
+      totalPrincipalCollected,
+      totalProfitCollected,
+      totalFineCollected,
+      totalExpense,
+      totalOutstandingProfit,
+      currentCash,
+      totalStatus,
+      arrears,
+      totalEarnedProfit,
+      netProfit,
+      totalMoney,
+      verificationSum,
+      isMatched
+    } = reportData;
+
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert('পপ-আপ ব্লক করা হয়েছে। দয়া করে পপ-আপ এলাউ করুন।');
+      return;
+    }
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>মাসিক রিপোর্ট - ${monthName} ${toBengaliNumber(monYear)}</title>
+          <style>
+            @import url('https://fonts.maateen.me/solaiman-lipi/font.css');
+            @page { 
+              size: A4 portrait; 
+              margin: 8mm 10mm; 
+            }
+            body { 
+              font-family: 'SolaimanLipi', sans-serif; 
+              margin: 0; 
+              padding: 0; 
+              background: #fff; 
+              color: #000;
+              font-size: 11px;
+              line-height: 1.3;
+            }
+            .header-box {
+              border: 1.5px solid black;
+              padding: 8px;
+              text-align: center;
+              margin-bottom: 12px;
+            }
+            .header-box h1 {
+              margin: 0;
+              font-size: 20px;
+              font-weight: bold;
+              letter-spacing: 0.5px;
+            }
+            .header-box p {
+              margin: 2px 0 0;
+              font-size: 12px;
+            }
+            .header-box h2 {
+              margin: 4px 0 0;
+              font-size: 13px;
+              font-weight: bold;
+            }
+            .section-box {
+              border: 1px solid black;
+              margin-bottom: 10px;
+            }
+            .section-title {
+              background-color: #334155;
+              color: white;
+              padding: 4px 8px;
+              font-weight: bold;
+              font-size: 12px;
+            }
+            .section-title.emerald {
+              background-color: #059669;
+            }
+            .section-title.amber {
+              background-color: #d97706;
+            }
+            .section-title.rose {
+              background-color: #e11d48;
+            }
+            .row {
+              display: flex;
+              justify-content: space-between;
+              padding: 4px 8px;
+              border-bottom: 1px solid #e2e8f0;
+            }
+            .row:last-child {
+              border-bottom: none;
+            }
+            .row.bold {
+              font-weight: bold;
+              background-color: #f1f5f9;
+            }
+            .grid-2 {
+              display: grid;
+              grid-template-columns: 1.1fr 0.9fr;
+              gap: 12px;
+            }
+            .text-center { text-align: center; }
+            .text-right { text-align: right; }
+            .font-bold { font-weight: bold; }
+            .footer {
+              margin-top: 10px;
+              text-align: center;
+              font-size: 9px;
+              color: #555;
+            }
+            @media print {
+              body { 
+                padding: 0; 
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+              }
+              .section-box {
+                page-break-inside: avoid;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header-box">
+            <h1>Sarder Credit Union</h1>
+            <p>কয়ারিয়া, কালকিনি মাদারীপুর</p>
+            <h2>মাসিক রিপোর্ট: ${monthName} - ${toBengaliNumber(monYear)}</h2>
+          </div>
+
+          <div class="grid-2">
+            <div>
+              <!-- Summary Section -->
+              <div class="section-box">
+                <div class="section-title">২. মূল সারসংক্ষেপ (Summary)</div>
+                <div class="row"><span>মোট পরিচালক জমা</span><span class="font-bold">${formatCurrency(totalDirectorDeposit)}</span></div>
+                <div class="row"><span>মোট পরিচালক উত্তোলন</span><span class="font-bold">${formatCurrency(totalDirectorWithdrawal)}</span></div>
+                <div class="row" style="border-top: 1px dashed black;"><span>মোট বিনিয়োগ প্রদান</span><span class="font-bold" style="color: #2563eb;">${formatCurrency(totalInvestmentGiven)}</span></div>
+                <div class="row"><span>মোট আদায়</span><span class="font-bold" style="color: #059669;">${formatCurrency(totalPrincipalCollected + totalProfitCollected + totalFineCollected)}</span></div>
+                <div class="row" style="border-top: 1px dashed black;"><span>মোট মুনাফা (Earned Profit)</span><span class="font-bold">${formatCurrency(totalProfitCollected)}</span></div>
+                <div class="row"><span>মোট জরিমানা</span><span class="font-bold">${formatCurrency(totalFineCollected)}</span></div>
+                <div class="row"><span>মোট ব্যয়</span><span class="font-bold" style="color: #dc2626;">${formatCurrency(totalExpense)}</span></div>
+                <div class="row" style="border-top: 1px dashed black;"><span>মোট মুনাফা বন্টন</span><span class="font-bold" style="color: #4f46e5;">${formatCurrency(totalProfitDistribution)}</span></div>
+                <div class="row"><span>মোট মুনাফা উত্তোলন</span><span class="font-bold" style="color: #ea580c;">${formatCurrency(totalProfitWithdrawal)}</span></div>
+              </div>
+            </div>
+
+            <div>
+              <!-- Cash & Bank Section -->
+              <div class="section-box">
+                <div class="section-title emerald">৩. ক্যাশ ও ব্যাংক হিসাব</div>
+                <div class="row"><span>বর্তমান ক্যাশ</span><span class="font-bold">${formatCurrency(currentCash)}</span></div>
+                <div class="row"><span>বর্তমান ব্যাংক ব্যালেন্স</span><span class="font-bold">${formatCurrency(currentBankBalance)}</span></div>
+                <div class="row bold"><span>মোট স্থিতি (ক্যাশ + ব্যাংক)</span><span class="font-bold" style="font-size: 12px;">${formatCurrency(totalStatus)}</span></div>
+              </div>
+
+              <!-- Due Account Section -->
+              <div class="section-box">
+                <div class="section-title amber">৪. বকেয়া হিসাব (Outstanding)</div>
+                <div class="row"><span>মোট বিনিয়োগ প্রদান</span><span class="font-bold">${formatCurrency(totalInvestmentGiven)}</span></div>
+                <div class="row"><span>মোট আদায় (আসল)</span><span class="font-bold">${formatCurrency(totalPrincipalCollected)}</span></div>
+                <div class="row bold"><span>বর্তমান বকেয়া (আসল)</span><span class="font-bold" style="font-size: 12px; color: #d97706;">${formatCurrency(arrears)}</span></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Total Verification Section -->
+          <div class="section-box" style="margin-top: 2px;">
+            <div class="section-title rose">৫. সর্বমোট হিসাব যাচাইকরণ (Verification)</div>
+            <div class="grid-2" style="gap: 0; padding: 4px 0;">
+              <div style="border-right: 1px solid #e2e8f0; padding: 0 10px;">
+                <div class="row" style="border: none; padding: 2px 0;"><span>মোট বিনিয়োগ (আসল বকেয়া)</span><span class="font-bold">${formatCurrency(arrears)}</span></div>
+                <div class="row" style="border: none; padding: 2px 0;"><span>বর্তমান ক্যাশ</span><span class="font-bold">${formatCurrency(currentCash)}</span></div>
+                <div class="row" style="border: none; padding: 2px 0;"><span>বর্তমান ব্যাংক ব্যালেন্স</span><span class="font-bold">${formatCurrency(currentBankBalance)}</span></div>
+                <div class="row bold" style="padding: 4px 8px; margin-top: 2px;"><span>(ক) মোট টাকা (আসল)</span><span class="font-bold">${formatCurrency(totalMoney)}</span></div>
+                <div class="row bold" style="padding: 4px 8px; border: none;"><span>(খ) মোট টাকা (মুনাফাসহ)</span><span class="font-bold" style="color: #059669;">${formatCurrency(totalMoney + totalOutstandingProfit)}</span></div>
+              </div>
+              <div style="padding: 0 10px;">
+                <div class="row" style="border: none; padding: 2px 0;"><span>মোট পরিচালক নিট তহবিল</span><span class="font-bold">${formatCurrency(totalDirectorDeposit - totalDirectorWithdrawal)}</span></div>
+                <div class="row" style="border: none; padding: 2px 0;"><span>অর্জিত নিট মুনাফা (বন্টনযোগ্য)</span><span class="font-bold">${formatCurrency(netProfit)}</span></div>
+                <div class="row" style="border: none; padding: 2px 0;"><span>বকেয়া মুনাফা বন্টন</span><span class="font-bold">${formatCurrency(totalProfitDistribution - totalProfitWithdrawal)}</span></div>
+                <div class="row bold" style="padding: 4px 8px; margin-top: 2px;"><span>(গ) যাচাইযোগ্য মোট তহবিল</span><span class="font-bold">${formatCurrency(verificationSum)}</span></div>
+                <div class="row bold" style="padding: 4px 8px; border: none;"><span>(ঘ) যাচাইযোগ্য মোট তহবিল (মুনাফাসহ)</span><span class="font-bold" style="color: #059669;">${formatCurrency(verificationSum + totalOutstandingProfit)}</span></div>
+              </div>
+            </div>
+            <div style="background-color: ${isMatched ? '#ecfdf5' : '#fef2f2'}; padding: 6px; text-align: center; font-weight: bold; border-top: 1px solid black; color: ${isMatched ? '#047857' : '#b91c1c'}; font-size: 11px;">
+              ${isMatched ? '✓ হিসাব মিলেছে (Matched)' : '✗ হিসাব মিলেনি (Mismatch Detected)'}
+            </div>
+          </div>
+
+          <div class="footer">
+          </div>
+
+          <script>
+            window.onload = () => {
+              setTimeout(() => {
+                window.print();
+              }, 500);
+            };
+          </script>
+        </body>
+      </html>
+    `;
+
+    printWindow.document.write(html);
+    printWindow.document.close();
+  };
+
+  const printMonthlyDetailedReport = () => {
+    const months = [
+      { id: '1', name: 'জানুয়ারি' }, { id: '2', name: 'ফেব্রুয়ারি' }, { id: '3', name: 'মার্চ' },
+      { id: '4', name: 'এপ্রিল' }, { id: '5', name: 'মে' }, { id: '6', name: 'জুন' },
+      { id: '7', name: 'জুলাই' }, { id: '8', name: 'আগস্ট' }, { id: '9', name: 'সেপ্টেম্বর' },
+      { id: '10', name: 'অক্টোবর' }, { id: '11', name: 'নভেম্বর' }, { id: '12', name: 'ডিসেম্বর' }
+    ];
+    const monthName = months.find(m => m.id === monMonth)?.name || '';
+
+    const y = parseInt(monYear);
+    const m = parseInt(monMonth);
+
+    const today = new Date();
+    const currentYear = today.getFullYear();
+    const currentMonth = today.getMonth() + 1;
+
+    const isCurrentMonth = (y === currentYear && m === currentMonth);
+    const isFutureMonth = (y > currentYear || (y === currentYear && m > currentMonth));
+
+    let reportData: any = null;
+    let isRunning = false;
+
+    if (isCurrentMonth) {
+      reportData = calculateDetailedReportForMonth(y, m);
+      isRunning = true;
+    } else if (!isFutureMonth) {
+      const reportId = `detailed-${y}-${m}`;
+      const savedReport = data.monthlyReports.find(r => r.id === reportId);
+      if (savedReport) {
+        reportData = savedReport;
+      }
+    }
+
+    if (!reportData) {
+      alert('রিপোর্ট ডাটা পাওয়া যায়নি।');
+      return;
+    }
+
+    const { dailyData, totals, summary } = reportData;
+
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert('পপ-আপ ব্লক করা হয়েছে। দয়া করে পপ-আপ এলাউ করুন।');
+      return;
+    }
+
+    const filteredDailyData = dailyData.filter((row: any) => {
+      const hasAnyValue = row.installment || row.directorDeposit || row.fine || row.directorWithdrawal || row.investment || row.expense || row.bankDeposit || row.bankWithdrawal;
+      return hasAnyValue;
+    });
+
+    const rowsHtml = filteredDailyData.map((row: any) => {
+      return `
+        <tr>
+          <td style="border: 1px solid black; padding: 3px 5px; text-align: center; font-family: monospace;">${toBengaliNumber(row.day)}</td>
+          <td style="border: 1px solid black; padding: 3px 5px; text-align: right;">${row.installment > 0 ? formatCurrency(row.installment) : ''}</td>
+          <td style="border: 1px solid black; padding: 3px 5px; text-align: right;">${row.directorDeposit > 0 ? formatCurrency(row.directorDeposit) : ''}</td>
+          <td style="border: 1px solid black; padding: 3px 5px; text-align: right;">${row.fine > 0 ? formatCurrency(row.fine) : ''}</td>
+          <td style="border: 1px solid black; padding: 3px 5px; text-align: right;">${row.directorWithdrawal > 0 ? formatCurrency(row.directorWithdrawal) : ''}</td>
+          <td style="border: 1px solid black; padding: 3px 5px; text-align: right;">${row.investment > 0 ? formatCurrency(row.investment) : ''}</td>
+          <td style="border: 1px solid black; padding: 3px 5px; text-align: right;">${row.expense > 0 ? formatCurrency(row.expense) : ''}</td>
+          <td style="border: 1px solid black; padding: 3px 5px; text-align: right;">${row.bankDeposit > 0 ? formatCurrency(row.bankDeposit) : ''}</td>
+          <td style="border: 1px solid black; padding: 3px 5px; text-align: right;">${row.bankWithdrawal > 0 ? formatCurrency(row.bankWithdrawal) : ''}</td>
+        </tr>
+      `;
+    }).join('');
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>মাসিক বিস্তারিত প্রতিবেদন - ${monthName} ${toBengaliNumber(monYear)}</title>
+          <style>
+            @import url('https://fonts.maateen.me/solaiman-lipi/font.css');
+            @page { 
+              size: A4 portrait; 
+              margin: 8mm 8mm; 
+            }
+            body { 
+              font-family: 'SolaimanLipi', sans-serif; 
+              margin: 0; 
+              padding: 0; 
+              background: #fff; 
+              color: #000;
+              font-size: 11px;
+              line-height: 1.3;
+            }
+            .header-box {
+              border: 1px solid black;
+              padding: 6px 10px;
+              text-align: center;
+              margin-bottom: 12px;
+            }
+            .header-box h1 {
+              margin: 0;
+              font-size: 18px;
+              font-weight: bold;
+              letter-spacing: 0.5px;
+            }
+            .header-box p {
+              margin: 2px 0 0;
+              font-size: 11px;
+            }
+            .header-box h2 {
+              margin: 2px 0 0;
+              font-size: 12px;
+              font-weight: bold;
+            }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-bottom: 12px;
+              font-size: 9px;
+            }
+            th, td {
+              border: 1px solid black;
+              padding: 3px 4px;
+              white-space: nowrap;
+            }
+            th {
+              background-color: #f3f4f6;
+              font-weight: bold;
+              font-size: 9px;
+            }
+            .total-row {
+              background-color: #f3f4f6;
+              font-weight: bold;
+              font-size: 9.5px;
+            }
+            .summary-container {
+              display: flex;
+              flex-direction: column;
+              gap: 10px;
+              margin-top: 10px;
+            }
+            .summary-box {
+              border: 1px solid black;
+            }
+            .summary-title {
+              background-color: #e2e8f0;
+              text-align: center;
+              padding: 4px;
+              font-weight: bold;
+              border-bottom: 1px solid black;
+              font-size: 11px;
+            }
+            .summary-table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-bottom: 0;
+            }
+            .summary-table td {
+              border: none;
+              border-bottom: 1px solid #e5e7eb;
+              padding: 4px 6px;
+              font-size: 10px;
+            }
+            .summary-table tr:last-child td {
+              border-bottom: none;
+            }
+            .text-center {
+              text-align: center;
+            }
+            .text-right {
+              text-align: right;
+            }
+            .font-bold {
+              font-weight: bold;
+            }
+            .footer {
+              margin-top: 10px;
+              text-align: center;
+              font-size: 8.5px;
+              color: #555;
+            }
+            @media print {
+              body { 
+                padding: 0; 
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+              }
+              tr, .summary-box {
+                page-break-inside: avoid;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header-box">
+            <h1>Sarder Credit Union</h1>
+            <p>কয়ারিয়া, কালকিনি মাদারীপুর</p>
+            <h2>মাসিক রিপোর্ট - ${monthName} - ${toBengaliNumber(monYear)}</h2>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 35px;">তারিখ</th>
+                <th>কিস্তি আদায়</th>
+                <th>পরিচালকের জমা</th>
+                <th>জরিমানা আদায়</th>
+                <th>পরিচালকের উত্তোলন</th>
+                <th>বিনিয়োগ প্রদান</th>
+                <th>মোট ব্যয়</th>
+                <th>ব্যাংকে জমা</th>
+                <th>ব্যাংক উত্তোলন</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml}
+              <tr class="total-row">
+                <td style="text-align: center; font-weight: bold;">মোট</td>
+                <td style="text-align: right;">${totals.installment > 0 ? formatCurrency(totals.installment) : '০'}</td>
+                <td style="text-align: right;">${totals.directorDeposit > 0 ? formatCurrency(totals.directorDeposit) : '০'}</td>
+                <td style="text-align: right;">${totals.fine > 0 ? formatCurrency(totals.fine) : '০'}</td>
+                <td style="text-align: right;">${totals.directorWithdrawal > 0 ? formatCurrency(totals.directorWithdrawal) : '০'}</td>
+                <td style="text-align: right;">${totals.investment > 0 ? formatCurrency(totals.investment) : '০'}</td>
+                <td style="text-align: right;">${totals.expense > 0 ? formatCurrency(totals.expense) : '০'}</td>
+                <td style="text-align: right;">${totals.bankDeposit > 0 ? formatCurrency(totals.bankDeposit) : '০'}</td>
+                <td style="text-align: right;">${totals.bankWithdrawal > 0 ? formatCurrency(totals.bankWithdrawal) : '০'}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="summary-container">
+            <!-- Cash Account -->
+            <div class="summary-box">
+              <div class="summary-title" style="background-color: #fed7aa;">ক্যাশ হিসাব</div>
+              <table class="summary-table">
+                <tbody>
+                  <tr>
+                    <td style="width: 65%;">গত মাসের ইজা</td>
+                    <td class="text-center font-bold">${formatCurrency(summary.openingCash)}</td>
+                  </tr>
+                  <tr>
+                    <td>এ মাসে মোট আয়</td>
+                    <td class="text-center font-bold">${formatCurrency(summary.totalIncome)}</td>
+                  </tr>
+                  <tr>
+                    <td>ব্যাংক উত্তোলন</td>
+                    <td class="text-center font-bold">${formatCurrency(summary.bankWithdrawal)}</td>
+                  </tr>
+                  <tr>
+                    <td>মোট ব্যয়</td>
+                    <td class="text-center font-bold">${formatCurrency(summary.totalExpense)}</td>
+                  </tr>
+                  <tr>
+                    <td>ব্যাংকে জমা</td>
+                    <td class="text-center font-bold">${formatCurrency(summary.bankDeposit)}</td>
+                  </tr>
+                  <tr style="background-color: #fff7ed; font-weight: bold;">
+                    <td style="color: #dc2626;">মাস শেষে হাতে রয়েছে</td>
+                    <td class="text-center font-bold" style="color: #dc2626;">${formatCurrency(summary.closingCash)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Bank Account -->
+            <div class="summary-box">
+              <div class="summary-title" style="background-color: #bfdbfe;">ব্যাংক হিসাব</div>
+              <table class="summary-table">
+                <tbody>
+                  <tr>
+                    <td style="width: 65%;">গত মাসের ইজা</td>
+                    <td class="text-center font-bold">${formatCurrency(summary.openingBank)}</td>
+                  </tr>
+                  <tr>
+                    <td>এ মাসে মোট জমা</td>
+                    <td class="text-center font-bold">${formatCurrency(summary.bankDeposit)}</td>
+                  </tr>
+                  <tr>
+                    <td>এ মাসে মোট উত্তোলন</td>
+                    <td class="text-center font-bold">${formatCurrency(summary.bankWithdrawal)}</td>
+                  </tr>
+                  <tr style="background-color: #eff6ff; font-weight: bold;">
+                    <td style="color: #dc2626;">মাস শেষে ব্যাংকে থাকে</td>
+                    <td class="text-center font-bold" style="color: #dc2626;">${formatCurrency(summary.closingBank)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Profit / Outstanding -->
+            <div class="summary-box">
+              <div class="summary-title" style="background-color: #bbf7d0;">মুনাফা ও বকেয়া হিসাব</div>
+              <table class="summary-table">
+                <tbody>
+                  <tr>
+                    <td style="width: 65%;">মোট অর্জিত মুনাফা</td>
+                    <td class="text-center font-bold">${formatCurrency(summary.monthlyEarnedProfit)}</td>
+                  </tr>
+                  <tr style="font-weight: bold; background-color: #f0fdf4;">
+                    <td>বর্তমান বকেয়া (মুনাফাসহ)</td>
+                    <td class="text-center font-bold">${formatCurrency(summary.monthlyOutstandingAmount)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="footer">
+          </div>
+
+          <script>
+            window.onload = () => {
+              setTimeout(() => {
+                window.print();
+              }, 500);
+            };
+          </script>
+        </body>
+      </html>
+    `;
+
+    printWindow.document.write(html);
+    printWindow.document.close();
+  };
+
   const renderMonthlyReport = () => {
     const months = [
       { id: '1', name: 'জানুয়ারি' }, { id: '2', name: 'ফেব্রুয়ারি' }, { id: '3', name: 'মার্চ' },
@@ -1477,12 +2049,20 @@ export const Reports = () => {
     return (
       <div className="space-y-6 animate-in fade-in duration-500 pb-20">
         <div className="flex items-center justify-between">
-          <button 
-            onClick={() => setView('monthly-report-step1')}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-black hover:bg-slate-50 font-bold text-xs"
-          >
-            <ArrowLeft size={14} /> ফিরে যান
-          </button>
+          <div className="flex gap-2">
+            <button 
+              onClick={() => setView('monthly-report-step1')}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-black hover:bg-slate-50 font-bold text-xs"
+            >
+              <ArrowLeft size={14} /> ফিরে যান
+            </button>
+            <button 
+              onClick={printMonthlyReport}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 text-white font-bold text-xs hover:bg-slate-900 active:scale-95 transition-all"
+            >
+              <Printer size={14} /> প্রিন্ট করুন
+            </button>
+          </div>
           <div className="text-right">
              <h2 className="text-xl font-black text-slate-800">মাসিক রিপোর্ট</h2>
              <p className="text-[10px] font-bold text-slate-400">
@@ -1766,12 +2346,20 @@ export const Reports = () => {
     return (
       <div className="space-y-6 animate-in fade-in duration-500 pb-20">
         <div className="flex items-center justify-between">
-          <button 
-            onClick={() => setView('monthly-detailed-report-step1')}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-black hover:bg-slate-50 font-bold text-xs"
-          >
-            <ArrowLeft size={14} /> ফিরে যান
-          </button>
+          <div className="flex gap-2">
+            <button 
+              onClick={() => setView('monthly-detailed-report-step1')}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-black hover:bg-slate-50 font-bold text-xs"
+            >
+              <ArrowLeft size={14} /> ফিরে যান
+            </button>
+            <button 
+              onClick={printMonthlyDetailedReport}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 text-white font-bold text-xs hover:bg-slate-900 active:scale-95 transition-all"
+            >
+              <Printer size={14} /> প্রিন্ট করুন
+            </button>
+          </div>
           <div className="text-right">
              <h2 className="text-xl font-black text-slate-800">মাসিক রিপোর্ট</h2>
              <p className="text-[10px] font-bold text-slate-400">
