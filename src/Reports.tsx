@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, deleteDoc, doc } from 'firebase/firestore';
+import { collection, onSnapshot, deleteDoc, doc, setDoc } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
 import { db, handleFirestoreError, OperationType } from './firebase';
 import { formatCurrency, toBengaliNumber, cn } from './lib/utils';
-import { Calendar, ArrowLeft, Search, ChevronRight, TrendingUp, TrendingDown, Wallet, Trash2, Check, X } from 'lucide-react';
+import { Calendar, ArrowLeft, Search, ChevronRight, TrendingUp, TrendingDown, Wallet, Trash2, Check, X, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from './AuthContext';
 
-type ViewState = 'list' | 'profit-loss-step1' | 'profit-loss-report' | 'investment-report' | 'overall-report' | 'expense-report-step1' | 'expense-report';
+type ViewState = 'list' | 'profit-loss-step1' | 'profit-loss-report' | 'investment-report' | 'overall-report' | 'expense-report-step1' | 'expense-report' | 'monthly-report-step1' | 'monthly-report' | 'monthly-detailed-report-step1' | 'monthly-detailed-report';
 
 export const Reports = () => {
   const { role } = useAuth();
@@ -28,6 +28,7 @@ export const Reports = () => {
     customers: [] as any[],
     directorTransactions: [] as any[],
     bankTransactions: [] as any[],
+    monthlyReports: [] as any[],
   });
 
   // Investment Report Filters
@@ -35,6 +36,10 @@ export const Reports = () => {
   const [invYear, setInvYear] = useState(new Date().getFullYear().toString());
   const [invMonth, setInvMonth] = useState((new Date().getMonth() + 1).toString());
   const [invAccount, setInvAccount] = useState('');
+
+  // Monthly Report Filters
+  const [monYear, setMonYear] = useState(new Date().getFullYear().toString());
+  const [monMonth, setMonMonth] = useState((new Date().getMonth() + 1).toString());
 
   useEffect(() => {
     const onBack = (e: Event) => {
@@ -79,13 +84,20 @@ export const Reports = () => {
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'bank_transactions');
     });
+    const unsubMR = onSnapshot(collection(db, 'monthly_reports'), (snap) => {
+      setData(prev => ({ ...prev, monthlyReports: snap.docs.map(doc => ({ id: doc.id, ...doc.data() })) }));
+    }, (error) => {
+      console.warn("Gracefully handled monthly_reports list read error (often expected for restricted roles):", error);
+    });
 
-    return () => { unsubI(); unsubT(); unsubC(); unsubDT(); unsubBT(); };
+    return () => { unsubI(); unsubT(); unsubC(); unsubDT(); unsubBT(); unsubMR(); };
   }, []);
 
   const handleBack = () => {
     if (view === 'profit-loss-report') setView('profit-loss-step1');
     else if (view === 'expense-report') setView('expense-report-step1');
+    else if (view === 'monthly-report') setView('monthly-report-step1');
+    else if (view === 'monthly-detailed-report') setView('monthly-detailed-report-step1');
     else setView('list');
   };
 
@@ -99,6 +111,364 @@ export const Reports = () => {
       console.error("Error deleting expense:", error);
     }
   };
+
+  const getLastDayOfMonth = (year: number, month: number): string => {
+    const date = new Date(year, month, 0);
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
+
+  const calculateOverallReportForDate = (targetDate: string) => {
+    // 1. Director Stats
+    let totalDirectorDeposit = 0;
+    let totalDirectorWithdrawal = 0;
+    let totalProfitDistribution = 0;
+    let totalProfitWithdrawal = 0;
+
+    data.directorTransactions.forEach(t => {
+      if (t.date && t.date <= targetDate) {
+        if (t.type === 'deposit') totalDirectorDeposit += t.amount || 0;
+        if (t.type === 'withdrawal') totalDirectorWithdrawal += t.amount || 0;
+        if (t.type === 'profit_distribution') totalProfitDistribution += t.amount || 0;
+        if (t.type === 'profit_withdraw') totalProfitWithdrawal += t.amount || 0;
+      }
+    });
+
+    // 2. Bank Stats
+    let totalBankDeposit = 0;
+    let totalBankWithdrawal = 0;
+    data.bankTransactions.forEach(t => {
+      if (t.date && t.date <= targetDate) {
+        if (t.type === 'deposit') totalBankDeposit += t.amount || 0;
+        if (t.type === 'withdrawal') totalBankWithdrawal += t.amount || 0;
+      }
+    });
+    const currentBankBalance = totalBankDeposit - totalBankWithdrawal;
+
+    // 3. Investment & Transaction Stats
+    let totalInvestmentGiven = 0;
+    data.investments.forEach(inv => {
+      if (inv.startDate && inv.startDate <= targetDate) {
+        totalInvestmentGiven += parseFloat(inv.amount) || 0;
+      }
+    });
+
+    let totalPrincipalCollected = 0;
+    let totalProfitCollected = 0;
+    let totalFineCollected = 0;
+    let totalExpense = 0;
+
+    data.transactions.forEach(t => {
+      if (t.date && t.date <= targetDate) {
+        if (t.type === 'payment' || t.type === 'settlement') {
+          totalFineCollected += (t.fine || 0);
+          const inv = data.investments.find(i => i.id === t.investmentId);
+          if (inv && inv.totalAmount > 0) {
+            if (t.type === 'settlement') {
+              const ratio = inv.profitAmount / inv.totalAmount;
+              const expectedProfit = ((t.amount + (t.discount || 0)) * ratio) - (t.discount || 0);
+              const actualProfit = Math.max(0, expectedProfit);
+              totalProfitCollected += actualProfit;
+              totalPrincipalCollected += (t.amount - actualProfit);
+            } else {
+              const profitPortion = t.amount * (inv.profitAmount / inv.totalAmount);
+              totalProfitCollected += profitPortion;
+              totalPrincipalCollected += (t.amount - profitPortion);
+            }
+          }
+        } else if (t.type === 'expense') {
+          totalExpense += t.amount || 0;
+        }
+      }
+    });
+
+    // Calculate Outstanding Profit (Profit from investments that are ongoing on targetDate)
+    let totalOutstandingProfit = 0;
+    data.investments.forEach(inv => {
+      if (inv.startDate && inv.startDate <= targetDate) {
+        let initialDue = parseFloat(inv.totalAmount) || 0;
+        let isSettled = false;
+        let paidUpToTarget = 0;
+
+        const invTransactions = data.transactions.filter(t => t.investmentId === inv.id && t.date && t.date <= targetDate);
+        invTransactions.forEach(t => {
+          if (t.type === 'settlement') {
+            isSettled = true;
+          } else if (t.type === 'payment') {
+            paidUpToTarget += t.amount || 0;
+          }
+        });
+
+        const dueAtTarget = isSettled ? 0 : Math.max(0, initialDue - paidUpToTarget);
+        if (dueAtTarget > 0) {
+          const total = parseFloat(inv.totalAmount) || 0;
+          const profit = parseFloat(inv.profitAmount) || 0;
+          if (total > 0) {
+            totalOutstandingProfit += (dueAtTarget * (profit / total));
+          }
+        }
+      }
+    });
+
+    // 4. Cash Calculation
+    const currentCash = (totalDirectorDeposit - totalDirectorWithdrawal) 
+                      - totalInvestmentGiven 
+                      + (totalPrincipalCollected + totalProfitCollected + totalFineCollected) 
+                      - totalExpense 
+                      - totalBankDeposit 
+                      + totalBankWithdrawal 
+                      - totalProfitWithdrawal;
+
+    const totalStatus = currentCash + currentBankBalance;
+    const arrears = totalInvestmentGiven - totalPrincipalCollected;
+    
+    // 5. Profit Calculation
+    const totalEarnedProfit = totalProfitCollected + totalFineCollected;
+    const netProfit = totalEarnedProfit - totalProfitDistribution;
+    
+    // 6. Final Balance (Total Money)
+    const totalMoney = (totalDirectorDeposit - totalDirectorWithdrawal) + totalEarnedProfit - totalProfitWithdrawal - totalExpense;
+
+    // 7. Verification
+    const verificationSum = currentCash + currentBankBalance + arrears;
+    const isMatched = Math.abs(totalMoney - verificationSum) < 1;
+
+    return {
+      totalDirectorDeposit,
+      totalDirectorWithdrawal,
+      totalProfitDistribution,
+      totalProfitWithdrawal,
+      totalBankDeposit,
+      totalBankWithdrawal,
+      currentBankBalance,
+      totalInvestmentGiven,
+      totalPrincipalCollected,
+      totalProfitCollected,
+      totalFineCollected,
+      totalExpense,
+      totalOutstandingProfit,
+      currentCash,
+      totalStatus,
+      arrears,
+      totalEarnedProfit,
+      netProfit,
+      totalMoney,
+      verificationSum,
+      isMatched
+    };
+  };
+
+  const calculateDetailedReportForMonth = (y: number, m: number) => {
+    const lastDay = new Date(y, m, 0).getDate();
+    const daysArray = Array.from({ length: lastDay }, (_, i) => i + 1);
+    const targetYearMonth = `${y}-${String(m).padStart(2, '0')}`;
+
+    // Filter data for this month
+    const monthTransactions = data.transactions.filter(t => t.date && t.date.startsWith(targetYearMonth));
+    const monthDirTransactions = data.directorTransactions.filter(t => t.date && t.date.startsWith(targetYearMonth));
+    const monthBankTransactions = data.bankTransactions.filter(t => t.date && t.date.startsWith(targetYearMonth));
+    const monthInvestments = data.investments.filter(inv => inv.startDate && inv.startDate.startsWith(targetYearMonth));
+
+    const dailyData = daysArray.map(d => {
+      const dayStr = `${targetYearMonth}-${String(d).padStart(2, '0')}`;
+
+      let installment = 0;
+      let fine = 0;
+      monthTransactions.forEach(t => {
+        if (t.date === dayStr && (t.type === 'payment' || t.type === 'settlement')) {
+          installment += t.amount || 0;
+          fine += t.fine || 0;
+        }
+      });
+
+      let directorDeposit = 0;
+      let directorWithdrawal = 0;
+      monthDirTransactions.forEach(t => {
+        if (t.date === dayStr) {
+          if (t.type === 'deposit') directorDeposit += t.amount || 0;
+          if (t.type === 'withdrawal') directorWithdrawal += t.amount || 0;
+        }
+      });
+
+      let investment = 0;
+      monthInvestments.forEach(inv => {
+        if (inv.startDate === dayStr) {
+          investment += parseFloat(inv.amount) || 0;
+        }
+      });
+
+      let expense = 0;
+      monthTransactions.forEach(t => {
+        if (t.date === dayStr && t.type === 'expense') {
+          expense += t.amount || 0;
+        }
+      });
+
+      let bankDeposit = 0;
+      let bankWithdrawal = 0;
+      monthBankTransactions.forEach(t => {
+        if (t.date === dayStr) {
+          if (t.type === 'deposit') bankDeposit += t.amount || 0;
+          if (t.type === 'withdrawal') bankWithdrawal += t.amount || 0;
+        }
+      });
+
+      return {
+        day: d,
+        installment,
+        directorDeposit,
+        fine,
+        directorWithdrawal,
+        investment,
+        expense,
+        bankDeposit,
+        bankWithdrawal
+      };
+    });
+
+    const totalInstallment = dailyData.reduce((sum, row) => sum + row.installment, 0);
+    const totalDirectorDeposit = dailyData.reduce((sum, row) => sum + row.directorDeposit, 0);
+    const totalFine = dailyData.reduce((sum, row) => sum + row.fine, 0);
+    const totalDirectorWithdrawal = dailyData.reduce((sum, row) => sum + row.directorWithdrawal, 0);
+    const totalInvestment = dailyData.reduce((sum, row) => sum + row.investment, 0);
+    const totalExpense = dailyData.reduce((sum, row) => sum + row.expense, 0);
+    const totalBankDeposit = dailyData.reduce((sum, row) => sum + row.bankDeposit, 0);
+    const totalBankWithdrawal = dailyData.reduce((sum, row) => sum + row.bankWithdrawal, 0);
+
+    // Calculate Opening Balances
+    const prevMonthDate = new Date(y, m - 2, 1);
+    const prevYear = prevMonthDate.getFullYear();
+    const prevMonth = prevMonthDate.getMonth() + 1;
+    const prevLastDayStr = getLastDayOfMonth(prevYear, prevMonth);
+    const prevReport = calculateOverallReportForDate(prevLastDayStr);
+    
+    const openingCash = prevReport.currentCash;
+    const openingBank = prevReport.currentBankBalance;
+
+    // Calculate Closing Balances as of the end of the month
+    const lastDayStr = getLastDayOfMonth(y, m);
+    const targetReport = calculateOverallReportForDate(lastDayStr);
+    const closingCash = targetReport.currentCash;
+    const closingBank = targetReport.currentBankBalance;
+
+    // Calculate monthly earned profit matching "সর্বমোট হিসাব প্রতিবেদন" (cumulative change of totalEarnedProfit)
+    const monthlyEarnedProfit = targetReport.totalEarnedProfit - prevReport.totalEarnedProfit;
+
+    // Calculate outstanding principal + profit at the end of the month matching "সর্বমোট হিসাব প্রতিবেদন" (arrears + totalOutstandingProfit)
+    const monthlyOutstandingAmount = targetReport.arrears + targetReport.totalOutstandingProfit;
+
+    return {
+      dailyData,
+      totals: {
+        installment: totalInstallment,
+        directorDeposit: totalDirectorDeposit,
+        fine: totalFine,
+        directorWithdrawal: totalDirectorWithdrawal,
+        investment: totalInvestment,
+        expense: totalExpense,
+        bankDeposit: totalBankDeposit,
+        bankWithdrawal: totalBankWithdrawal
+      },
+      summary: {
+        openingCash,
+        totalIncome: totalInstallment + totalDirectorDeposit + totalFine,
+        bankWithdrawal: totalBankWithdrawal,
+        totalExpense,
+        bankDeposit: totalBankDeposit,
+        closingCash,
+        openingBank,
+        closingBank,
+        monthlyEarnedProfit,
+        monthlyOutstandingAmount
+      }
+    };
+  };
+
+  const autoSaveMonthlyReport = async (y: number, m: number) => {
+    if (role !== 'admin' && role !== 'super_admin') return;
+
+    const reportId = `${y}-${m}`;
+    const alreadySaved = data.monthlyReports.some(r => r.id === reportId);
+    
+    const lastDayStr = getLastDayOfMonth(y, m);
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    // Auto-save only if today is strictly after the last day of the selected month (meaning the month has fully completed)
+    if (todayStr > lastDayStr) {
+      if (!alreadySaved) {
+        const calculatedReport = calculateOverallReportForDate(lastDayStr);
+        try {
+          await setDoc(doc(db, 'monthly_reports', reportId), {
+            ...calculatedReport,
+            year: y,
+            month: m,
+            lastDate: lastDayStr,
+            savedAt: new Date().toISOString()
+          });
+          console.log(`Auto-saved monthly report for ${reportId}`);
+        } catch (err) {
+          console.warn("Gracefully handled error auto-saving monthly report (often expected during initialization or for non-authorized roles):", err);
+        }
+      }
+
+      const detailedReportId = `detailed-${y}-${m}`;
+      const detailedAlreadySaved = data.monthlyReports.some(r => r.id === detailedReportId);
+      if (!detailedAlreadySaved) {
+        const detailedReportData = calculateDetailedReportForMonth(y, m);
+        try {
+          await setDoc(doc(db, 'monthly_reports', detailedReportId), {
+            ...detailedReportData,
+            year: y,
+            month: m,
+            lastDate: lastDayStr,
+            type: 'detailed',
+            savedAt: new Date().toISOString()
+          });
+          console.log(`Auto-saved detailed monthly report for ${detailedReportId}`);
+        } catch (err) {
+          console.warn("Gracefully handled error auto-saving detailed report:", err);
+        }
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (role !== 'admin' && role !== 'super_admin') return;
+
+    if (data.transactions.length > 0 || data.directorTransactions.length > 0) {
+      const today = new Date();
+      const currentYear = today.getFullYear();
+      const currentMonth = today.getMonth() + 1;
+
+      // Clean up any premature monthly reports for the current or future months
+      data.monthlyReports.forEach(async (r) => {
+        const rYear = parseInt(r.year);
+        const rMonth = parseInt(r.month);
+        if (rYear > currentYear || (rYear === currentYear && rMonth >= currentMonth)) {
+          try {
+            await deleteDoc(doc(db, 'monthly_reports', r.id));
+            console.log(`Successfully deleted premature monthly report: ${r.id}`);
+          } catch (err) {
+            console.warn(`Could not delete premature monthly report: ${r.id}`, err);
+          }
+        }
+      });
+
+      // Auto-save all completed months starting from 2026-04 (April 2026) up to current month
+      let startYear = 2026;
+      let startMonth = 4;
+      while (startYear < currentYear || (startYear === currentYear && startMonth <= currentMonth)) {
+        autoSaveMonthlyReport(startYear, startMonth);
+        startMonth++;
+        if (startMonth > 12) {
+          startMonth = 1;
+          startYear++;
+        }
+      }
+    }
+  }, [data.transactions, data.directorTransactions, data.monthlyReports, role]);
 
   const renderReportList = () => (
     <div className="space-y-6 animate-in fade-in duration-500">
@@ -157,6 +527,32 @@ export const Reports = () => {
               <td className="px-4 py-2 text-center">
                 <button 
                   onClick={() => navigate('/transaction-report')}
+                  className="inline-flex items-center gap-2 px-3 py-1 bg-blue-600 text-white text-[10px] font-bold hover:bg-blue-700 transition-all active:scale-95"
+                >
+                  প্রতিবেদন
+                  <ChevronRight size={12} />
+                </button>
+              </td>
+            </tr>
+            <tr className="hover:bg-slate-50/50 transition-colors group">
+              <td className="px-4 py-2 text-[12px] font-bold text-slate-500 border-r border-black text-center">{toBengaliNumber(5)}</td>
+              <td className="px-4 py-2 text-[12px] font-bold text-slate-800 border-r border-black">মাসিক প্রতিবেদন</td>
+              <td className="px-4 py-2 text-center">
+                <button 
+                  onClick={() => setView('monthly-report-step1')}
+                  className="inline-flex items-center gap-2 px-3 py-1 bg-blue-600 text-white text-[10px] font-bold hover:bg-blue-700 transition-all active:scale-95"
+                >
+                  প্রতিবেদন
+                  <ChevronRight size={12} />
+                </button>
+              </td>
+            </tr>
+            <tr className="hover:bg-slate-50/50 transition-colors group">
+              <td className="px-4 py-2 text-[12px] font-bold text-slate-500 border-r border-black text-center">{toBengaliNumber(6)}</td>
+              <td className="px-4 py-2 text-[12px] font-bold text-slate-800 border-r border-black">মাসিক রিপোর্ট</td>
+              <td className="px-4 py-2 text-center">
+                <button 
+                  onClick={() => setView('monthly-detailed-report-step1')}
                   className="inline-flex items-center gap-2 px-3 py-1 bg-blue-600 text-white text-[10px] font-bold hover:bg-blue-700 transition-all active:scale-95"
                 >
                   প্রতিবেদন
@@ -925,6 +1321,614 @@ export const Reports = () => {
     </div>
   );
 
+  const renderMonthlyReportStep1 = () => {
+    const months = [
+      { id: '1', name: 'জানুয়ারি' }, { id: '2', name: 'ফেব্রুয়ারি' }, { id: '3', name: 'মার্চ' },
+      { id: '4', name: 'এপ্রিল' }, { id: '5', name: 'মে' }, { id: '6', name: 'জুন' },
+      { id: '7', name: 'জুলাই' }, { id: '8', name: 'আগস্ট' }, { id: '9', name: 'সেপ্টেম্বর' },
+      { id: '10', name: 'অক্টোবর' }, { id: '11', name: 'নভেম্বর' }, { id: '12', name: 'ডিসেম্বর' }
+    ];
+
+    const handleViewReport = async () => {
+      const y = parseInt(monYear);
+      const m = parseInt(monMonth);
+      await autoSaveMonthlyReport(y, m);
+      setView('monthly-report');
+    };
+
+    return (
+      <div className="max-w-xl mx-auto space-y-6 animate-in slide-in-from-bottom-4 duration-500">
+        <div className="bg-white p-6 border border-black space-y-6">
+          <div className="text-center space-y-2">
+            <div className="w-12 h-12 bg-blue-50 text-blue-600 flex items-center justify-center mx-auto mb-2 border border-blue-100">
+              <Calendar size={24} />
+            </div>
+            <h3 className="text-lg font-black text-slate-800">মাসিক রিপোর্ট</h3>
+            <p className="text-slate-400 text-[10px] font-bold">রিপোর্ট দেখার জন্য বছর এবং মাস নির্বাচন করুন</p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">বছর (Year)</label>
+              <input 
+                type="number"
+                placeholder="২০২৪"
+                className="w-full p-3 bg-slate-50 border border-black focus:outline-none font-bold text-xs text-slate-700"
+                value={monYear}
+                onChange={e => setMonYear(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">মাস (Month)</label>
+              <select 
+                className="w-full p-3 bg-slate-50 border border-black focus:outline-none font-bold text-xs text-slate-700"
+                value={monMonth}
+                onChange={e => setMonMonth(e.target.value)}
+              >
+                {months.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <button 
+            onClick={handleViewReport}
+            className="w-full py-3 bg-blue-600 text-white font-black text-sm hover:bg-blue-700 transition-all active:scale-95"
+          >
+            রিপোর্ট দেখুন
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  const renderMonthlyReport = () => {
+    const months = [
+      { id: '1', name: 'জানুয়ারি' }, { id: '2', name: 'ফেব্রুয়ারি' }, { id: '3', name: 'মার্চ' },
+      { id: '4', name: 'এপ্রিল' }, { id: '5', name: 'মে' }, { id: '6', name: 'জুন' },
+      { id: '7', name: 'জুলাই' }, { id: '8', name: 'আগস্ট' }, { id: '9', name: 'সেপ্টেম্বর' },
+      { id: '10', name: 'অক্টোবর' }, { id: '11', name: 'নভেম্বর' }, { id: '12', name: 'ডিসেম্বর' }
+    ];
+    const monthName = months.find(m => m.id === monMonth)?.name || '';
+
+    const y = parseInt(monYear);
+    const m = parseInt(monMonth);
+
+    const today = new Date();
+    const currentYear = today.getFullYear();
+    const currentMonth = today.getMonth() + 1;
+
+    const isCurrentMonth = (y === currentYear && m === currentMonth);
+    const isFutureMonth = (y > currentYear || (y === currentYear && m > currentMonth));
+
+    let reportData: any = null;
+    let isRunning = false;
+    let savedReport: any = null;
+
+    if (isCurrentMonth) {
+      const lastDayStr = getLastDayOfMonth(y, m);
+      reportData = calculateOverallReportForDate(lastDayStr);
+      isRunning = true;
+    } else if (!isFutureMonth) {
+      const reportId = `${y}-${m}`;
+      savedReport = data.monthlyReports.find(r => r.id === reportId);
+      if (savedReport) {
+        reportData = savedReport;
+      }
+    }
+
+    if (!reportData) {
+      return (
+        <div className="space-y-6 animate-in fade-in duration-500 pb-20">
+          <div className="flex items-center justify-between">
+            <button 
+              onClick={() => setView('monthly-report-step1')}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-black hover:bg-slate-50 font-bold text-xs"
+            >
+              <ArrowLeft size={14} /> ফিরে যান
+            </button>
+            <div className="text-right">
+               <h2 className="text-xl font-black text-slate-800">মাসিক রিপোর্ট</h2>
+               <p className="text-[10px] font-bold text-rose-600">
+                 {toBengaliNumber(monYear)} সালের {monthName} মাসের রিপোর্ট পাওয়া যায়নি
+               </p>
+            </div>
+          </div>
+
+          <div className="max-w-xl mx-auto bg-white p-8 border border-black text-center space-y-4">
+            <div className="w-16 h-16 bg-amber-50 text-amber-500 flex items-center justify-center mx-auto border border-amber-100">
+              <AlertCircle size={32} />
+            </div>
+            <h3 className="text-lg font-black text-slate-800">রিপোর্ট পাওয়া যায়নি</h3>
+            <button 
+              onClick={() => setView('monthly-report-step1')}
+              className="px-6 py-2 bg-slate-800 text-white font-black text-xs hover:bg-slate-900 transition-all active:scale-95"
+            >
+              পিছনে যান
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    const isHistoricalSnapshot = !isRunning;
+
+    const {
+      totalDirectorDeposit,
+      totalDirectorWithdrawal,
+      totalProfitDistribution,
+      totalProfitWithdrawal,
+      currentBankBalance,
+      totalInvestmentGiven,
+      totalPrincipalCollected,
+      totalProfitCollected,
+      totalFineCollected,
+      totalExpense,
+      totalOutstandingProfit,
+      currentCash,
+      totalStatus,
+      arrears,
+      totalEarnedProfit,
+      netProfit,
+      totalMoney,
+      verificationSum,
+      isMatched
+    } = reportData;
+
+    return (
+      <div className="space-y-6 animate-in fade-in duration-500 pb-20">
+        <div className="flex items-center justify-between">
+          <button 
+            onClick={() => setView('monthly-report-step1')}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-black hover:bg-slate-50 font-bold text-xs"
+          >
+            <ArrowLeft size={14} /> ফিরে যান
+          </button>
+          <div className="text-right">
+             <h2 className="text-xl font-black text-slate-800">মাসিক রিপোর্ট</h2>
+             <p className="text-[10px] font-bold text-slate-400">
+               {toBengaliNumber(monYear)} সালের {monthName} মাসের হিসাব
+               {isHistoricalSnapshot ? ' (সংরক্ষিত)' : ' (চলমান হিসাব)'}
+             </p>
+          </div>
+        </div>
+
+        {/* 1. Report Header */}
+        <div className="bg-white border-2 border-black p-6 text-center space-y-2">
+          <h1 className="text-3xl font-black text-slate-900">Sarder Credit Union</h1>
+          <div className="h-1 bg-black w-48 mx-auto" />
+          <h2 className="text-lg font-bold text-slate-700">মাসিক রিপোর্ট: {monthName} - {toBengaliNumber(monYear)}</h2>
+          {isHistoricalSnapshot && savedReport?.savedAt && (
+            <p className="text-[9px] text-slate-400 font-bold">সংরক্ষণের তারিখ: {toBengaliNumber(new Date(savedReport.savedAt).toLocaleDateString('bn-BD'))}</p>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* 2. Summary Section */}
+          <div className="bg-white border border-black overflow-hidden">
+            <div className="bg-slate-800 text-white px-4 py-2 font-black text-xs uppercase tracking-widest">
+              ২. মূল সারসংক্ষেপ (Summary)
+            </div>
+            <div className="p-4 space-y-3">
+              <SummaryRow label="মোট পরিচালক জমা" value={totalDirectorDeposit} />
+              <SummaryRow label="মোট পরিচালক উত্তোলন" value={totalDirectorWithdrawal} />
+              <div className="h-px bg-slate-200" />
+              <SummaryRow label="মোট বিনিয়োগ প্রদান" value={totalInvestmentGiven} color="text-blue-600" />
+              <SummaryRow label="মোট আদায়" value={totalPrincipalCollected + totalProfitCollected + totalFineCollected} color="text-emerald-600" />
+              <div className="h-px bg-slate-200" />
+              <SummaryRow label="মোট মুনাফা (Earned Profit)" value={totalProfitCollected} />
+              <SummaryRow label="মোট জরিমানা" value={totalFineCollected} />
+              <SummaryRow label="মোট ব্যয়" value={totalExpense} color="text-red-600" />
+              <div className="h-px bg-slate-200" />
+              <SummaryRow label="মোট মুনাফা বন্টন" value={totalProfitDistribution} color="text-indigo-600" />
+              <SummaryRow label="মোট মুনাফা উত্তোলন" value={totalProfitWithdrawal} color="text-orange-600" />
+            </div>
+          </div>
+
+          <div className="space-y-6">
+            {/* 3. Cash & Bank Section */}
+            <div className="bg-white border border-black overflow-hidden">
+              <div className="bg-emerald-600 text-white px-4 py-2 font-black text-xs uppercase tracking-widest">
+                ৩. ক্যাশ ও ব্যাংক হিসাব
+              </div>
+              <div className="p-4 space-y-3">
+                <SummaryRow label="বর্তমান ক্যাশ" value={currentCash} />
+                <SummaryRow label="বর্তমান ব্যাংক ব্যালেন্স" value={currentBankBalance} />
+                <div className="h-px bg-emerald-100" />
+                <SummaryRow label="মোট স্থিতি (ক্যাশ + ব্যাংক)" value={totalStatus} fontClass="font-black text-lg" />
+              </div>
+            </div>
+
+            {/* 4. Due Account Section */}
+            <div className="bg-white border border-black overflow-hidden">
+              <div className="bg-amber-500 text-white px-4 py-2 font-black text-xs uppercase tracking-widest">
+                ৪. বকেয়া হিসাব (Outstanding)
+              </div>
+              <div className="p-4 space-y-3">
+                <SummaryRow label="মোট বিনিয়োগ প্রদান" value={totalInvestmentGiven} />
+                <SummaryRow label="মোট আদায় (আসল)" value={totalPrincipalCollected} />
+                <div className="h-px bg-amber-100" />
+                <SummaryRow label="বর্তমান বকেয়া (আসল)" value={arrears} color="text-amber-600" fontClass="font-black text-lg" />
+                <SummaryRow label="বকেয়া মুনাফা (Outstanding Profit)" value={totalOutstandingProfit} />
+                <div className="h-px bg-amber-100" />
+                <SummaryRow label="মোট বকেয়া (আসল + মুনাফা)" value={arrears + totalOutstandingProfit} color="text-amber-700" fontClass="font-black text-lg" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* 5. Profit/Loss Section */}
+          <div className="bg-white border border-black overflow-hidden">
+            <div className="bg-blue-600 text-white px-4 py-2 font-black text-xs uppercase tracking-widest">
+              ৫. লাভ-ক্ষতি হিসাব
+            </div>
+            <div className="p-4 space-y-3">
+              <SummaryRow label="মোট মুনাফা" value={totalProfitCollected} />
+              <SummaryRow label="মোট জরিমানা" value={totalFineCollected} />
+              <SummaryRow label="মোট ব্যয়" value={totalExpense} />
+              <div className="h-px bg-blue-100" />
+              <SummaryRow label="মোট অর্জিত মুনাফা" value={totalEarnedProfit} color="text-blue-700" fontClass="font-black" />
+              <SummaryRow label="মুনাফা বন্টন" value={totalProfitDistribution} color="text-indigo-600" />
+              <div className="h-px bg-blue-100" />
+              <SummaryRow label="নিট মুনাফা" value={netProfit} color="text-emerald-700" fontClass="font-black text-lg" />
+            </div>
+          </div>
+
+          {/* 6. Final Balance Section */}
+          <div className="bg-slate-900 text-white border border-black overflow-hidden">
+            <div className="bg-black text-white px-4 py-2 font-black text-xs uppercase tracking-widest">
+              ৬. চূড়ান্ত ব্যালেন্স ও প্রাপ্য
+            </div>
+            <div className="p-6 space-y-6">
+              <div className="grid grid-cols-1 gap-6">
+                <div className="space-y-1">
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">চূড়ান্ত ব্যালেন্স (Accounting)</p>
+                  <h3 className="text-3xl font-black">{formatCurrency(totalMoney)}</h3>
+                  <p className="text-[10px] text-slate-500 font-bold">(ক্যাশ + আসল বকেয়া)</p>
+                </div>
+                
+                <div className="h-px bg-white/10" />
+                
+                <div className="space-y-1">
+                  <p className="text-[10px] text-emerald-400 font-bold uppercase tracking-widest">মোট প্রাপ্য (Recoverable)</p>
+                  <h3 className="text-3xl font-black text-emerald-400">{formatCurrency(totalMoney + totalOutstandingProfit)}</h3>
+                  <p className="text-[10px] text-emerald-500/60 font-bold">(ক্যাশ + আসল + মুনাফা)</p>
+                </div>
+              </div>
+              
+              <div className="p-4 bg-white/10 rounded-xl border border-white/20 space-y-4">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="font-bold text-slate-400">ক্যাশ + ব্যাংক + আসল বকেয়া</span>
+                  <span className="font-black">{formatCurrency(verificationSum)}</span>
+                </div>
+                
+                <div className="pt-3 border-t border-white/10 flex justify-between items-center">
+                  <span className="text-sm font-black uppercase tracking-widest">যাচাই ফলাফল (Accounting)</span>
+                  <div className={cn(
+                    "px-4 py-1 rounded-full text-xs font-black flex items-center gap-2",
+                    isMatched ? "bg-emerald-500 text-white" : "bg-rose-500 text-white"
+                  )}>
+                    {isMatched ? (
+                      <>মিল আছে <Check size={14} /></>
+                    ) : (
+                      <>মিল নেই <X size={14} /></>
+                    )}
+                  </div>
+                </div>
+
+                <div className="pt-3 border-t border-white/10 flex justify-between items-center text-xs text-emerald-400/80">
+                  <span className="font-bold">ক্যাশ + ব্যাংক + আসল + মুনাফা</span>
+                  <span className="font-black">{formatCurrency(verificationSum + totalOutstandingProfit)}</span>
+                </div>
+
+                {!isMatched && (
+                  <p className="text-[10px] text-rose-300 font-bold leading-relaxed">
+                    সতর্কতা: চূড়ান্ত ব্যালেন্সের সাথে স্থিতি মিলছে না। দয়া করে সকল লেনদেন পুনরায় যাচাই করুন।
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderMonthlyDetailedReportStep1 = () => {
+    const months = [
+      { id: '1', name: 'জানুয়ারি' }, { id: '2', name: 'ফেব্রুয়ারি' }, { id: '3', name: 'মার্চ' },
+      { id: '4', name: 'এপ্রিল' }, { id: '5', name: 'মে' }, { id: '6', name: 'জুন' },
+      { id: '7', name: 'জুলাই' }, { id: '8', name: 'আগস্ট' }, { id: '9', name: 'সেপ্টেম্বর' },
+      { id: '10', name: 'অক্টোবর' }, { id: '11', name: 'নভেম্বর' }, { id: '12', name: 'ডিসেম্বর' }
+    ];
+
+    const handleViewReport = async () => {
+      const y = parseInt(monYear);
+      const m = parseInt(monMonth);
+      await autoSaveMonthlyReport(y, m);
+      setView('monthly-detailed-report');
+    };
+
+    return (
+      <div className="max-w-xl mx-auto space-y-6 animate-in slide-in-from-bottom-4 duration-500">
+        <div className="bg-white p-6 border border-black space-y-6">
+          <div className="text-center space-y-2">
+            <div className="w-12 h-12 bg-blue-50 text-blue-600 flex items-center justify-center mx-auto mb-2 border border-blue-100">
+              <Calendar size={24} />
+            </div>
+            <h3 className="text-lg font-black text-slate-800">মাসিক রিপোর্ট</h3>
+            <p className="text-slate-400 text-[10px] font-bold">রিপোর্ট দেখার জন্য বছর এবং মাস নির্বাচন করুন</p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">বছর (Year)</label>
+              <input 
+                type="number"
+                placeholder="২০২৬"
+                className="w-full p-3 bg-slate-50 border border-black focus:outline-none font-bold text-xs text-slate-700"
+                value={monYear}
+                onChange={e => setMonYear(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">মাস (Month)</label>
+              <select 
+                className="w-full p-3 bg-slate-50 border border-black focus:outline-none font-bold text-xs text-slate-700"
+                value={monMonth}
+                onChange={e => setMonMonth(e.target.value)}
+              >
+                {months.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <button 
+            onClick={handleViewReport}
+            className="w-full py-3 bg-blue-600 text-white font-black text-sm hover:bg-blue-700 transition-all active:scale-95"
+          >
+            রিপোর্ট দেখুন
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  const renderMonthlyDetailedReport = () => {
+    const months = [
+      { id: '1', name: 'জানুয়ারি' }, { id: '2', name: 'ফেব্রুয়ারি' }, { id: '3', name: 'মার্চ' },
+      { id: '4', name: 'এপ্রিল' }, { id: '5', name: 'মে' }, { id: '6', name: 'জুন' },
+      { id: '7', name: 'জুলাই' }, { id: '8', name: 'আগস্ট' }, { id: '9', name: 'সেপ্টেম্বর' },
+      { id: '10', name: 'অক্টোবর' }, { id: '11', name: 'নভেম্বর' }, { id: '12', name: 'ডিসেম্বর' }
+    ];
+    const monthName = months.find(m => m.id === monMonth)?.name || '';
+
+    const y = parseInt(monYear);
+    const m = parseInt(monMonth);
+
+    const today = new Date();
+    const currentYear = today.getFullYear();
+    const currentMonth = today.getMonth() + 1;
+
+    const isCurrentMonth = (y === currentYear && m === currentMonth);
+    const isFutureMonth = (y > currentYear || (y === currentYear && m > currentMonth));
+
+    let reportData: any = null;
+    let isRunning = false;
+
+    if (isCurrentMonth) {
+      reportData = calculateDetailedReportForMonth(y, m);
+      isRunning = true;
+    } else if (!isFutureMonth) {
+      const reportId = `detailed-${y}-${m}`;
+      const savedReport = data.monthlyReports.find(r => r.id === reportId);
+      if (savedReport) {
+        reportData = savedReport;
+      }
+    }
+
+    if (!reportData) {
+      return (
+        <div className="space-y-6 animate-in fade-in duration-500 pb-20">
+          <div className="flex items-center justify-between">
+            <button 
+              onClick={() => setView('monthly-detailed-report-step1')}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-black hover:bg-slate-50 font-bold text-xs"
+            >
+              <ArrowLeft size={14} /> ফিরে যান
+            </button>
+            <div className="text-right">
+               <h2 className="text-xl font-black text-slate-800">মাসিক রিপোর্ট</h2>
+               <p className="text-[10px] font-bold text-rose-600">
+                 {toBengaliNumber(monYear)} সালের {monthName} মাসের রিপোর্ট পাওয়া যায়নি
+               </p>
+            </div>
+          </div>
+
+          <div className="max-w-xl mx-auto bg-white p-8 border border-black text-center space-y-4">
+            <div className="w-16 h-16 bg-amber-50 text-amber-500 flex items-center justify-center mx-auto border border-amber-100">
+              <AlertCircle size={32} />
+            </div>
+            <h3 className="text-lg font-black text-slate-800">রিপোর্ট পাওয়া যায়নি</h3>
+            <button 
+              onClick={() => setView('monthly-detailed-report-step1')}
+              className="px-6 py-2 bg-slate-800 text-white font-black text-xs hover:bg-slate-900 transition-all active:scale-95"
+            >
+              পিছনে যান
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    const { dailyData, totals, summary } = reportData;
+
+    return (
+      <div className="space-y-6 animate-in fade-in duration-500 pb-20">
+        <div className="flex items-center justify-between">
+          <button 
+            onClick={() => setView('monthly-detailed-report-step1')}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-black hover:bg-slate-50 font-bold text-xs"
+          >
+            <ArrowLeft size={14} /> ফিরে যান
+          </button>
+          <div className="text-right">
+             <h2 className="text-xl font-black text-slate-800">মাসিক রিপোর্ট</h2>
+             <p className="text-[10px] font-bold text-slate-400">
+               {toBengaliNumber(monYear)} সালের {monthName} মাসের হিসাব {isRunning ? '(চলমান)' : '(সংরক্ষিত)'}
+             </p>
+          </div>
+        </div>
+
+        {/* Outer frame matching the image exactly - removing the border border-black as requested */}
+        <div className="bg-white p-4 md:p-6 space-y-6 overflow-x-auto">
+          {/* Header Box */}
+          <div className="border border-black p-3 text-center space-y-1">
+            <h1 className="text-xl md:text-2xl font-bold tracking-wide text-slate-900">Sarder Credit Union</h1>
+            <div className="h-px bg-black w-full" />
+            <h2 className="text-md md:text-lg font-bold text-slate-800">মাসিক রিপোর্ট-{monthName}-{toBengaliNumber(monYear)}</h2>
+          </div>
+
+          {/* Main Table */}
+          <div className="overflow-x-auto border-t border-l border-black">
+            <table className="w-full text-center border-collapse text-[11px] font-bold">
+              <thead>
+                <tr className="bg-slate-50 border-b border-black">
+                  <th className="p-1 border-r border-b border-black text-[12px] font-bold w-12">তারিখ</th>
+                  <th className="p-1 border-r border-b border-black text-[12px] font-bold">কিস্তি আদায়</th>
+                  <th className="p-1 border-r border-b border-black text-[12px] font-bold">পরিচালকের জমা</th>
+                  <th className="p-1 border-r border-b border-black text-[12px] font-bold">জরিমানা আদায়</th>
+                  <th className="p-1 border-r border-b border-black text-[12px] font-bold">পরিচালকের উত্তোলন</th>
+                  <th className="p-1 border-r border-b border-black text-[12px] font-bold">বিনিয়োগ প্রদান</th>
+                  <th className="p-1 border-r border-b border-black text-[12px] font-bold">মোট ব্যয়</th>
+                  <th className="p-1 border-r border-b border-black text-[12px] font-bold">ব্যাংকে জমা</th>
+                  <th className="p-1 border-r border-b border-black text-[12px] font-bold">ব্যাংক উত্তোলন</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dailyData.map((row: any) => {
+                  const hasAnyValue = row.installment || row.directorDeposit || row.fine || row.directorWithdrawal || row.investment || row.expense || row.bankDeposit || row.bankWithdrawal;
+                  return (
+                    <tr key={row.day} className={cn("hover:bg-slate-50", !hasAnyValue && "text-slate-300")}>
+                      <td className="p-1 border-r border-b border-black font-mono text-center">{toBengaliNumber(row.day)}</td>
+                      <td className="p-1 border-r border-b border-black">{row.installment > 0 ? formatCurrency(row.installment) : ''}</td>
+                      <td className="p-1 border-r border-b border-black">{row.directorDeposit > 0 ? formatCurrency(row.directorDeposit) : ''}</td>
+                      <td className="p-1 border-r border-b border-black">{row.fine > 0 ? formatCurrency(row.fine) : ''}</td>
+                      <td className="p-1 border-r border-b border-black">{row.directorWithdrawal > 0 ? formatCurrency(row.directorWithdrawal) : ''}</td>
+                      <td className="p-1 border-r border-b border-black">{row.investment > 0 ? formatCurrency(row.investment) : ''}</td>
+                      <td className="p-1 border-r border-b border-black">{row.expense > 0 ? formatCurrency(row.expense) : ''}</td>
+                      <td className="p-1 border-r border-b border-black">{row.bankDeposit > 0 ? formatCurrency(row.bankDeposit) : ''}</td>
+                      <td className="p-1 border-r border-b border-black">{row.bankWithdrawal > 0 ? formatCurrency(row.bankWithdrawal) : ''}</td>
+                    </tr>
+                  );
+                })}
+                {/* Total Row */}
+                <tr className="bg-slate-100 font-bold border-b border-black">
+                  <td className="p-1 border-r border-black">মোট</td>
+                  <td className="p-1 border-r border-black text-slate-800">{totals.installment > 0 ? formatCurrency(totals.installment) : '০'}</td>
+                  <td className="p-1 border-r border-black text-slate-800">{totals.directorDeposit > 0 ? formatCurrency(totals.directorDeposit) : '০'}</td>
+                  <td className="p-1 border-r border-black text-slate-800">{totals.fine > 0 ? formatCurrency(totals.fine) : '০'}</td>
+                  <td className="p-1 border-r border-black text-slate-800">{totals.directorWithdrawal > 0 ? formatCurrency(totals.directorWithdrawal) : '০'}</td>
+                  <td className="p-1 border-r border-black text-slate-800">{totals.investment > 0 ? formatCurrency(totals.investment) : '০'}</td>
+                  <td className="p-1 border-r border-black text-slate-800">{totals.expense > 0 ? formatCurrency(totals.expense) : '০'}</td>
+                  <td className="p-1 border-r border-black text-slate-800">{totals.bankDeposit > 0 ? formatCurrency(totals.bankDeposit) : '০'}</td>
+                  <td className="p-1 border-r border-black text-slate-800">{totals.bankWithdrawal > 0 ? formatCurrency(totals.bankWithdrawal) : '০'}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          {/* Bottom Summary Sections */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4">
+            {/* Left Column: Cash Account and Profit / Outstanding */}
+            <div className="space-y-6">
+              {/* Cash Account Box */}
+              <div className="border border-black">
+                <div className="bg-orange-200 text-slate-800 text-center py-2 font-bold border-b border-black text-xs">
+                  ক্যাশ হিসাব
+                </div>
+                <table className="w-full text-left text-xs border-collapse">
+                  <tbody>
+                    <tr className="border-b border-black">
+                      <td className="p-2 font-bold border-r border-black w-2/3">গত মাসের ইজা</td>
+                      <td className="p-2 font-bold text-center bg-slate-50">{formatCurrency(summary.openingCash)}</td>
+                    </tr>
+                    <tr className="border-b border-black">
+                      <td className="p-2 font-bold border-r border-black">এ মাসে মোট আয়</td>
+                      <td className="p-2 font-bold text-center bg-slate-50">{formatCurrency(summary.totalIncome)}</td>
+                    </tr>
+                    <tr className="border-b border-black">
+                      <td className="p-2 font-bold border-r border-black">ব্যাংক উত্তোলন</td>
+                      <td className="p-2 font-bold text-center bg-slate-50">{formatCurrency(summary.bankWithdrawal)}</td>
+                    </tr>
+                    <tr className="border-b border-black">
+                      <td className="p-2 font-bold border-r border-black">মোট ব্যয়</td>
+                      <td className="p-2 font-bold text-center bg-slate-50">{formatCurrency(summary.totalExpense)}</td>
+                    </tr>
+                    <tr className="border-b border-black">
+                      <td className="p-2 font-bold border-r border-black">ব্যাংকে জমা</td>
+                      <td className="p-2 font-bold text-center bg-slate-50">{formatCurrency(summary.bankDeposit)}</td>
+                    </tr>
+                    <tr className="bg-slate-100 font-bold">
+                      <td className="p-2 font-bold border-r border-black text-rose-600">মাস শেষে হাতে রয়েছে</td>
+                      <td className="p-2 font-bold text-center text-rose-600 bg-slate-200">{formatCurrency(summary.closingCash)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Profit & Outstanding Box */}
+              <div className="border border-black text-xs">
+                <table className="w-full text-left border-collapse">
+                  <tbody>
+                    <tr className="border-b border-black">
+                      <td className="p-2 font-bold border-r border-black w-2/3">মোট অর্জিত মুনাফা</td>
+                      <td className="p-2 font-bold text-center bg-slate-50">{formatCurrency(summary.monthlyEarnedProfit)}</td>
+                    </tr>
+                    <tr className="font-bold">
+                      <td className="p-2 font-bold border-r border-black">বর্তমান বকেয়া (মুনাফাসহ)</td>
+                      <td className="p-2 font-bold text-center bg-slate-50">{formatCurrency(summary.monthlyOutstandingAmount)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Right Column: Bank Account */}
+            <div className="space-y-6">
+              {/* Bank Account Box */}
+              <div className="border border-black">
+                <div className="bg-orange-200 text-slate-800 text-center py-2 font-bold border-b border-black text-xs">
+                  ব্যাংক হিসাব
+                </div>
+                <table className="w-full text-left text-xs border-collapse">
+                  <tbody>
+                    <tr className="border-b border-black">
+                      <td className="p-2 font-bold border-r border-black w-2/3">গত মাসের ইজা</td>
+                      <td className="p-2 font-bold text-center bg-slate-50">{formatCurrency(summary.openingBank)}</td>
+                    </tr>
+                    <tr className="border-b border-black">
+                      <td className="p-2 font-bold border-r border-black">এ মাসে মোট জমা</td>
+                      <td className="p-2 font-bold text-center bg-slate-50">{formatCurrency(summary.bankDeposit)}</td>
+                    </tr>
+                    <tr className="border-b border-black">
+                      <td className="p-2 font-bold border-r border-black">এ মাসে মোট উত্তোলন</td>
+                      <td className="p-2 font-bold text-center bg-slate-50">{formatCurrency(summary.bankWithdrawal)}</td>
+                    </tr>
+                    <tr className="bg-slate-100 font-bold">
+                      <td className="p-2 font-bold border-r border-black text-rose-600">মাস শেষে ব্যাংকে থাকে</td>
+                      <td className="p-2 font-bold text-center text-rose-600 bg-slate-200">{formatCurrency(summary.closingBank)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
 
   return (
     <div className="space-y-6">
@@ -962,6 +1966,26 @@ export const Reports = () => {
         {view === 'expense-report' && (
           <motion.div key="exp-report" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
             {renderExpenseReport()}
+          </motion.div>
+        )}
+        {view === 'monthly-report-step1' && (
+          <motion.div key="mon-step1" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}>
+            {renderMonthlyReportStep1()}
+          </motion.div>
+        )}
+        {view === 'monthly-report' && (
+          <motion.div key="mon-report" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            {renderMonthlyReport()}
+          </motion.div>
+        )}
+        {view === 'monthly-detailed-report-step1' && (
+          <motion.div key="mon-det-step1" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}>
+            {renderMonthlyDetailedReportStep1()}
+          </motion.div>
+        )}
+        {view === 'monthly-detailed-report' && (
+          <motion.div key="mon-det-report" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            {renderMonthlyDetailedReport()}
           </motion.div>
         )}
       </AnimatePresence>
